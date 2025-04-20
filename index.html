@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>U-Net++ Predictor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <style>
+        /* Custom styles */
+        body { font-family: 'Press Start 2P', cursive; overscroll-behavior: none; touch-action: manipulation; }
+        canvas, video { border: 1px solid #a0aec0; background-color: #f7fafc; max-width: 100%; height: auto; aspect-ratio: 1 / 1; display: block; margin: 0 auto; }
+        .canvas-container { display: flex; flex-direction: column; align-items: center; margin-bottom: 1rem; width: 100%; background-color: rgba(255, 255, 255, 0.5); padding: 0.75rem; border-radius: 0.5rem; border: 1px solid #e2e8f0; }
+        label { margin-top: 0.5rem; font-size: 0.75rem; color: #4a5568; text-align: center; line-height: 1.2; }
+        button:active { transform: scale(0.95); }
+        .loader { border: 4px solid #e0e7ff; border-top: 4px solid #4f46e5; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; display: inline-block; margin-left: 8px; vertical-align: middle; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        input[type=range] { height: 20px; -webkit-appearance: none; margin: 10px 0; width: 80%; background: transparent; }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; cursor: pointer; background: #7f9cf5; border-radius: 0px; border: 1px solid #4a5568; }
+        input[type=range]::-webkit-slider-thumb { height: 18px; width: 18px; border-radius: 0px; background: #4f46e5; cursor: pointer; -webkit-appearance: none; margin-top: -7px; border: 1px solid #2d3748; }
+        input[type=range]::-moz-range-track { width: 100%; height: 6px; cursor: pointer; background: #7f9cf5; border-radius: 0px; border: 1px solid #4a5568; }
+        input[type=range]::-moz-range-thumb { height: 18px; width: 18px; border-radius: 0px; background: #4f46e5; cursor: pointer; border: 1px solid #2d3748; }
+        /* Hide/Show */
+        .hidden { display: none; }
+        /* Style video element - keep size for JS but hide */
+        #videoFeed { width: 256px; height: 256px; object-fit: cover; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-100 via-purple-100 to-pink-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-4xl text-gray-800">
+        <h1 class="text-2xl sm:text-3xl font-bold text-indigo-700 mb-6 text-center">U-Net Predictor</h1>
+
+        <div class="text-center mb-4">
+            <button id="modeFileButton" class="bg-purple-600 text-white font-semibold py-1 px-3 rounded-l-md text-xs focus:outline-none ring-2 ring-purple-600 z-10 relative">File Upload</button><button id="modeCameraButton" class="bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-r-md text-xs focus:outline-none relative">Use Camera</button>
+        </div>
+
+        <div id="fileInputSection" class="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4 items-center px-4">
+             <div class="text-center md:text-left">
+                <label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wider">Model Status</label>
+                <div id="modelStatus" class="text-sm text-indigo-700 p-2 border border-indigo-300 rounded-md bg-indigo-50 h-[40px] flex items-center justify-center md:justify-start">Loading...</div>
+            </div>
+            <div class="text-center md:text-left">
+                <label for="imageInput" class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wider">1. Upload Image</label>
+                <input type="file" id="imageInput" accept="image/*" class="block w-full text-sm text-gray-700 border border-gray-400 rounded-md cursor-pointer
+                    file:mr-3 file:py-2 file:px-4 file:border-0 file:text-sm file:font-semibold
+                    file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 file:cursor-pointer" disabled>
+            </div>
+            <div class="flex justify-center mt-4 md:mt-0 md:justify-end items-center h-full">
+                 <button id="predictButton" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-5 rounded-md shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 text-sm disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    Predict Manually
+                 </button>
+            </div>
+        </div>
+
+        <div id="cameraInputSection" class="hidden mb-6 flex flex-col items-center px-4">
+             <label class="block text-xs font-medium text-gray-600 mb-2 uppercase tracking-wider">Camera Controls</label>
+             <div class="flex flex-wrap justify-center gap-4">
+                 <button id="startCameraButton" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-5 rounded-md shadow-md text-sm disabled:opacity-50">Start Camera</button>
+                 <button id="stopCameraButton" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-5 rounded-md shadow-md text-sm disabled:opacity-50" disabled>Stop Camera</button>
+                 <button id="switchCameraButton" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-5 rounded-md shadow-md text-sm disabled:opacity-50" disabled>Switch Camera</button>
+             </div>
+             <video id="videoFeed" width="256" height="256" playsinline muted class="mt-4 hidden"></video>
+             <p id="camErrorMsg" class="text-red-600 text-xs mt-2"></p>
+        </div>
+
+         <div class="mb-4 flex flex-col items-center border-t border-b border-indigo-200 py-3">
+             <label for="alphaSlider" class="block text-xs font-medium text-gray-600 mb-2 uppercase tracking-wider">Overlay Alpha: <span id="alphaValue" class="font-bold text-indigo-600">0.40</span></label>
+             <input type="range" id="alphaSlider" min="0" max="1" step="0.05" value="0.4" class="w-full max-w-md">
+        </div>
+
+        <div class="text-center text-gray-600 text-xs mb-4 h-4">Live FPS: <span id="fpsDisplay">-</span><div id="messageArea" class="text-center text-purple-700 text-xs mb-4 h-4"></div></div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div id="inputCanvasContainer" class="canvas-container">
+                <canvas id="inputCanvas" width="256" height="256"></canvas>
+                <label id="inputCanvasLabel" for="inputCanvas">Input</label>
+            </div>
+            <div class="canvas-container">
+                <canvas id="outputCombined" width="256" height="256"></canvas>
+                <label for="outputCombined">Combined Overlay</label>
+            </div>
+        </div>
+
+        <div class="mt-8 pt-4 border-t border-indigo-200 text-center">
+            <p class="text-xs text-gray-500">
+                <a href="https://github.com/Elucidation/chessdetect-tfjs" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800 underline">Source Code on GitHub</a>
+                <br>
+                <a href="https://youtu.be/BVt12vzp_iM?si=TGQFCpzhNeoPmxRp" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800 underline">Video Explanation</a>
+            </p>
+        </div>
+        </div>
+
+    <script>
+        // --- DOM Elements ---
+        const imageInput = document.getElementById('imageInput');
+        const predictButton = document.getElementById('predictButton');
+        const inputCanvas = document.getElementById('inputCanvas');
+        const outputCombinedCanvas = document.getElementById('outputCombined');
+        const messageArea = document.getElementById('messageArea');
+        const modelStatus = document.getElementById('modelStatus');
+        const alphaSlider = document.getElementById('alphaSlider');
+        const alphaValueSpan = document.getElementById('alphaValue');
+        const modeFileButton = document.getElementById('modeFileButton');
+        const modeCameraButton = document.getElementById('modeCameraButton');
+        const fileInputSection = document.getElementById('fileInputSection');
+        const cameraInputSection = document.getElementById('cameraInputSection');
+        const startCameraButton = document.getElementById('startCameraButton');
+        const stopCameraButton = document.getElementById('stopCameraButton');
+        const switchCameraButton = document.getElementById('switchCameraButton');
+        const videoElement = document.getElementById('videoFeed');
+        const camErrorMsg = document.getElementById('camErrorMsg');
+        const inputCanvasContainer = document.getElementById('inputCanvasContainer');
+        const inputCanvasLabel = document.getElementById('inputCanvasLabel');
+        const fpsDisplay = document.getElementById('fpsDisplay');
+
+        // Get 2D contexts
+        const inputCtx = inputCanvas.getContext('2d');
+        const outCombCtx = outputCombinedCanvas.getContext('2d');
+
+        // --- Config ---
+        const MODEL_URL = './tfjs_model_quantu8/model.json';
+        const TARGET_IMG_SIZE = 128;
+        const TARGET_FPS = 24;
+        const MS_PER_FRAME = 1000 / TARGET_FPS;
+
+        // --- State ---
+        let loadedImage = null;
+        let model = null;
+        let currentPredictionArray = null;
+        let isPredicting = false;
+        let isCameraMode = false;
+        let isCameraRunning = false;
+        let videoStream = null;
+        let animationFrameId = null;
+        let lastPredictTime = 0;
+        let frameCount = 0;
+        let lastFpsUpdate = 0;
+        let videoDevices = [];
+        let currentDeviceId = null;
+        let devicesEnumerated = false;
+
+        // --- Temporary Canvases ---
+        let tempSegCanvas = null; let tempHeatCanvas = null;
+        let tempSegCtx = null; let tempHeatCtx = null;
+
+        // --- Status Update Function ---
+        function setStatus(text, showSpinner = false) { modelStatus.innerHTML = text + (showSpinner ? ' <div class="loader"></div>' : ''); }
+        function setMessage(text = "") { messageArea.textContent = text; }
+        function setCamError(text = "") { camErrorMsg.textContent = text; }
+
+        // --- Mode Switching ---
+        modeFileButton.addEventListener('click', () => switchMode('file'));
+        modeCameraButton.addEventListener('click', () => switchMode('camera'));
+        function switchMode(mode) {
+             if (mode === 'file') {
+                isCameraMode = false; stopCamera();
+                fileInputSection.classList.remove('hidden');
+                cameraInputSection.classList.add('hidden');
+                inputCanvasContainer.classList.remove('hidden'); // Show input canvas
+                modeFileButton.classList.replace('bg-gray-300', 'bg-purple-600'); modeFileButton.classList.replace('text-gray-700', 'text-white');
+                modeFileButton.classList.add('ring-2', 'ring-purple-600', 'z-10'); modeCameraButton.classList.replace('bg-purple-600', 'bg-gray-300');
+                modeCameraButton.classList.replace('text-white', 'text-gray-700'); modeCameraButton.classList.remove('ring-2', 'ring-purple-600', 'z-10');
+                resetUI();
+            } else { // camera mode
+                isCameraMode = true;
+                fileInputSection.classList.add('hidden');
+                cameraInputSection.classList.remove('hidden');
+                inputCanvasContainer.classList.add('hidden'); // Hide input canvas
+                modeCameraButton.classList.replace('bg-gray-300', 'bg-purple-600'); modeCameraButton.classList.replace('text-gray-700', 'text-white');
+                modeCameraButton.classList.add('ring-2', 'ring-purple-600', 'z-10'); modeFileButton.classList.replace('bg-purple-600', 'bg-gray-300');
+                modeFileButton.classList.replace('text-white', 'text-gray-700'); modeFileButton.classList.remove('ring-2', 'ring-purple-600', 'z-10');
+                resetUI();
+            }
+        }
+
+        // --- Camera Controls ---
+        startCameraButton.addEventListener('click', () => startCamera());
+        stopCameraButton.addEventListener('click', stopCamera);
+        switchCameraButton.addEventListener('click', switchCamera);
+        async function getCameraDevices() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) { console.warn("enumerateDevices() is not supported."); return; }
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                videoDevices = devices.filter(device => device.kind === 'videoinput');
+                console.log("Available video devices:", videoDevices);
+                devicesEnumerated = true;
+                switchCameraButton.disabled = !(videoDevices.length > 1 && isCameraRunning);
+            } catch (err) { console.error("Error enumerating devices:", err); setCamError(`Error listing cameras: ${err.message}`); }
+        }
+        async function startCamera(deviceId = null) {
+             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { setCamError("getUserMedia() not supported (HTTPS required on mobile)."); return; }
+             if (!model) { setCamError("Model not loaded yet."); return; }
+             if (isCameraRunning) return;
+             setCamError(''); setMessage('Starting camera...'); startCameraButton.disabled = true; stopCameraButton.disabled = true; switchCameraButton.disabled = true;
+             let constraints = { video: {} };
+             if (deviceId) { constraints.video.deviceId = { exact: deviceId }; console.log("Attempting camera with deviceId:", deviceId); }
+             else { constraints.video.facingMode = 'environment'; console.log("Attempting camera with facingMode: environment"); }
+             try {
+                 let stream = null;
+                 try { stream = await navigator.mediaDevices.getUserMedia(constraints); }
+                 catch (err) {
+                      console.warn(`Failed getting camera with constraints: ${JSON.stringify(constraints)}. Error: ${err.name}`);
+                      if (deviceId || constraints.video.facingMode === 'environment') {
+                           console.log("Falling back to facingMode: user"); constraints.video = { facingMode: 'user' };
+                           try { stream = await navigator.mediaDevices.getUserMedia(constraints); }
+                           catch (err2) { console.warn(`Failed getting user camera. Falling back to any video.`); constraints.video = true; stream = await navigator.mediaDevices.getUserMedia(constraints); }
+                      } else { throw err; }
+                 }
+                 videoStream = stream; videoElement.srcObject = videoStream;
+                 const currentTrack = videoStream.getVideoTracks()[0];
+                 if (currentTrack) { currentDeviceId = currentTrack.getSettings().deviceId; console.log("Using deviceId:", currentDeviceId); }
+                 videoElement.onloadedmetadata = () => {
+                     videoElement.play().then(async () => {
+                         console.log("Video playback started."); isCameraRunning = true; stopCameraButton.disabled = false;
+                         if (!devicesEnumerated) { await getCameraDevices(); }
+                         else { switchCameraButton.disabled = !(videoDevices.length > 1 && isCameraRunning); } // Update button state
+                         setMessage('Camera running. Starting predictions...');
+                         lastPredictTime = performance.now(); frameCount = 0; lastFpsUpdate = lastPredictTime;
+                         predictLoop();
+                     }).catch(err => { console.error("Video play() failed:", err); setCamError(`Autoplay failed: ${err.message}.`); stopCameraButton.disabled = false; });
+                 };
+                  videoElement.onerror = (e) => { console.error("Video Element Error:", e); setCamError("Error playing video stream."); stopCamera(); }
+             } catch (err) {
+                 console.error("Error accessing camera:", err); setCamError(`Error accessing camera: ${err.name}`); setMessage('');
+                 startCameraButton.disabled = !model; stopCameraButton.disabled = true; switchCameraButton.disabled = true;
+             }
+        }
+        function stopCamera() {
+            if (animationFrameId) { cancelAnimationFrame(animationFrameId); animationFrameId = null; }
+            if (videoStream) { videoStream.getTracks().forEach(track => track.stop()); }
+            videoElement.srcObject = null; isCameraRunning = false; currentDeviceId = null;
+            startCameraButton.disabled = !model; stopCameraButton.disabled = true; switchCameraButton.disabled = true;
+            setMessage('Camera stopped.'); clearOutputCanvases();
+            if (!isCameraMode) inputCtx.clearRect(0, 0, inputCanvas.width, inputCanvas.height); // Clear input only if relevant
+            fpsDisplay.textContent = '-';
+        }
+        async function switchCamera() {
+            if (!isCameraRunning || videoDevices.length <= 1) { return; }
+            console.log("Attempting to switch camera...");
+            const currentIndex = videoDevices.findIndex(device => device.deviceId === currentDeviceId);
+            const nextIndex = (currentIndex + 1) % videoDevices.length;
+            const nextDeviceId = videoDevices[nextIndex].deviceId;
+            console.log(`Switching from ${currentDeviceId} to ${nextDeviceId}`);
+            stopCamera();
+            await new Promise(resolve => setTimeout(resolve, 100)); // Short delay
+            await startCamera(nextDeviceId);
+        }
+
+        // --- Model Loading ---
+        async function loadAppModel() {
+             setStatus('Loading model...', true); imageInput.disabled = true; predictButton.disabled = true; startCameraButton.disabled = true; switchCameraButton.disabled = true;
+            try {
+                model = await tf.loadGraphModel(MODEL_URL);
+                setStatus('Warming up...', true);
+                const warmupTensor = tf.zeros([1, TARGET_IMG_SIZE, TARGET_IMG_SIZE, 3]);
+                const warmupResult = model.predict(warmupTensor);
+                if (Array.isArray(warmupResult)) warmupResult.forEach(t => t.dispose()); else warmupResult.dispose();
+                warmupTensor.dispose();
+                setStatus('Model Ready'); console.log('Graph Model loaded.');
+                imageInput.disabled = false; startCameraButton.disabled = false;
+            } catch (error) {
+                console.error('Failed to load graph model:', error); setStatus(`Model Load Error!`);
+                setMessage("Model loading failed. Check console/path.");
+            }
+        }
+
+        // --- Image Loading & Display (File Mode) ---
+        imageInput.addEventListener('change', async (event) => {
+            if (isCameraMode) return; const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = async () => {
+                        loadedImage = img; drawInputImage(img); clearOutputCanvases(); currentPredictionArray = null;
+                        setMessage(model ? 'Model ready.' : 'Model not loaded.');
+                        if (model && !isPredicting) { setMessage('Image loaded. Auto-predicting...'); await runPrediction(); }
+                        else if (model) { predictButton.disabled = false; }
+                    };
+                    img.onerror = () => { displayError("Error loading image."); }
+                    img.src = e.target.result;
+                };
+                reader.onerror = () => { displayError("Error reading file."); }
+                reader.readAsDataURL(file);
+            } else { resetUI(); }
+        });
+        function drawInputImage(img) {
+             inputCtx.clearRect(0, 0, inputCanvas.width, inputCanvas.height);
+             const aspectRatio = img.width / img.height; let drawWidth = inputCanvas.width; let drawHeight = inputCanvas.height;
+             const canvasRatio = inputCanvas.width / inputCanvas.height;
+             if (aspectRatio > canvasRatio) { drawWidth = inputCanvas.width; drawHeight = drawWidth / aspectRatio; } else { drawHeight = inputCanvas.height; drawWidth = drawHeight * aspectRatio; }
+             const offsetX = (inputCanvas.width - drawWidth) / 2; const offsetY = (inputCanvas.height - drawHeight) / 2;
+             inputCtx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+        }
+
+        // --- Prediction Trigger (Manual Button - File Mode) ---
+        predictButton.addEventListener('click', async () => {
+             if (isCameraMode || !loadedImage || !model) { displayError("Switch to File mode and load image first."); return; }
+             if (isPredicting) return; await runPrediction();
+        });
+
+        // --- Core Prediction Logic ---
+        async function runPrediction(sourceElement = null) {
+             const currentSource = sourceElement || loadedImage;
+             if (!currentSource || !model || isPredicting) { return; }
+             isPredicting = true;
+             if (!isCameraMode) { setStatus('Processing...', true); predictButton.disabled = true; imageInput.disabled = true; setMessage('Preprocessing & Predicting...'); await new Promise(resolve => setTimeout(resolve, 10)); }
+             let inputTensor = null; let predictionTensor = null;
+             try {
+                 inputTensor = preprocessSource(currentSource, TARGET_IMG_SIZE);
+                 const tStart = performance.now();
+                 predictionTensor = tf.tidy(() => model.predict(inputTensor));
+                 const predictTime = performance.now() - tStart;
+                 currentPredictionArray = await predictionTensor.squeeze().array();
+                 drawCombined(currentSource, currentPredictionArray, parseFloat(alphaSlider.value), outputCombinedCanvas);
+                 if (!isCameraMode) { setMessage(`Prediction took ${predictTime.toFixed(0)}ms`); }
+             } catch (error) {
+                 console.error("Prediction Error:", error); if (!isCameraMode) displayError(`Processing error: ${error.message}`); currentPredictionArray = null;
+             } finally {
+                  isPredicting = false;
+                  if (!isCameraMode) { setStatus('Model Ready'); predictButton.disabled = !model || !loadedImage; imageInput.disabled = !model; }
+                  if(inputTensor) inputTensor.dispose(); if(predictionTensor) predictionTensor.dispose();
+             }
+        }
+
+        // --- Real-time Prediction Loop (Camera Mode) ---
+        async function predictLoop() {
+            if (!isCameraRunning || !model) { setMessage(model ? 'Camera stopped.' : 'Camera stopped, model unloaded.'); fpsDisplay.textContent = '-'; return; }
+            const now = performance.now(); const elapsed = now - lastPredictTime;
+            // Update FPS counter
+            frameCount++;
+            if (now - lastFpsUpdate > 1000) { const fps = frameCount / ((now - lastFpsUpdate) / 1000); fpsDisplay.textContent = fps.toFixed(1); frameCount = 0; lastFpsUpdate = now; }
+            // Throttle predictions
+            if (elapsed > MS_PER_FRAME && !isPredicting) {
+                lastPredictTime = now;
+                if (videoElement.readyState >= videoElement.HAVE_CURRENT_DATA) {
+                    setMessage(" "); await runPrediction(videoElement);
+                }
+            }
+            animationFrameId = requestAnimationFrame(predictLoop);
+        }
+
+
+        // --- Unified Preprocessing Function ---
+        function preprocessSource(sourceElement, targetSize) {
+             return tf.tidy(() => {
+                 const srcWidth = sourceElement.videoWidth || sourceElement.width;
+                 const srcHeight = sourceElement.videoHeight || sourceElement.height;
+                 if (!srcWidth || !srcHeight) { throw new Error("Source element has invalid dimensions."); }
+                 let tensor = tf.browser.fromPixels(sourceElement).toFloat();
+                 const aspectRatio = srcWidth / srcHeight; let newWidth = targetSize; let newHeight = targetSize;
+                 if (aspectRatio > 1) { newHeight = Math.max(1, Math.round(targetSize / aspectRatio)); } else { newWidth = Math.max(1, Math.round(targetSize * aspectRatio)); }
+                 const resized = tf.image.resizeBilinear(tensor, [newHeight, newWidth], true);
+                 const padHeight = targetSize - newHeight; const padWidth = targetSize - newWidth;
+                 const padTop = Math.floor(padHeight / 2); const padBottom = padHeight - padTop;
+                 const padLeft = Math.floor(padWidth / 2); const padRight = padWidth - padLeft;
+                 const paddings = [[padTop, padBottom], [padLeft, padRight], [0, 0]];
+                 const padded = tf.pad(resized, paddings, 0);
+                 const normalized = padded.div(tf.scalar(255.0));
+                 const batched = normalized.expandDims(0);
+                 tensor.dispose();
+                 return batched;
+             });
+        }
+
+        // --- Visualization Function ---
+        function drawCombined(baseSourceElement, predictionArray, alpha, targetCanvas) {
+            if (!baseSourceElement || !predictionArray) return;
+            const targetCtx = targetCanvas.getContext('2d'); const targetWidth = targetCanvas.width; const targetHeight = targetCanvas.height;
+            const predHeight = predictionArray.length; const predWidth = predictionArray[0].length; const channels = predictionArray[0][0].length;
+            if (channels !== 5) { console.error(`Prediction has ${channels} channels, expected 5.`); return; }
+            if (!tempSegCanvas || tempSegCanvas.width !== predWidth || tempSegCanvas.height !== predHeight) {
+                tempSegCanvas = document.createElement('canvas'); tempSegCanvas.width = predWidth; tempSegCanvas.height = predHeight; tempSegCtx = tempSegCanvas.getContext('2d');
+                tempHeatCanvas = document.createElement('canvas'); tempHeatCanvas.width = predWidth; tempHeatCanvas.height = predHeight; tempHeatCtx = tempHeatCanvas.getContext('2d');
+            }
+            const segImageData = tempSegCtx.createImageData(predWidth, predHeight); const heatImageData = tempHeatCtx.createImageData(predWidth, predHeight);
+            const segData = segImageData.data; const heatData = heatImageData.data; const heatmapColors = [ [255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0] ];
+            for (let y = 0; y < predHeight; y++) {
+                for (let x = 0; x < predWidth; x++) {
+                    const pixelIndex = (y * predWidth + x) * 4; const predictionPixel = predictionArray[y][x];
+                    const segValue = Math.round(predictionPixel[0] * 255); segData[pixelIndex] = segValue; segData[pixelIndex + 1] = segValue; segData[pixelIndex + 2] = segValue; segData[pixelIndex + 3] = 255;
+                    let r = 0, g = 0, b = 0;
+                    for (let c = 0; c < 4; c++) { const hv = predictionPixel[c + 1]; r += hv * heatmapColors[c][0]; g += hv * heatmapColors[c][1]; b += hv * heatmapColors[c][2]; }
+                    heatData[pixelIndex] = Math.min(255, Math.round(r)); heatData[pixelIndex + 1] = Math.min(255, Math.round(g)); heatData[pixelIndex + 2] = Math.min(255, Math.round(b)); heatData[pixelIndex + 3] = 255;
+                }
+            }
+            tempSegCtx.putImageData(segImageData, 0, 0); tempHeatCtx.putImageData(heatImageData, 0, 0);
+            targetCtx.clearRect(0, 0, targetWidth, targetHeight); targetCtx.imageSmoothingEnabled = true;
+            const baseWidth = baseSourceElement.videoWidth || baseSourceElement.width; const baseHeight = baseSourceElement.videoHeight || baseSourceElement.height;
+            if (!baseWidth || !baseHeight) { return; }
+            const aspectRatio = baseWidth / baseHeight; let drawWidth = targetWidth; let drawHeight = targetHeight; const canvasRatio = targetWidth / targetHeight;
+            if (aspectRatio > canvasRatio) { drawWidth = targetWidth; drawHeight = drawWidth / aspectRatio; } else { drawHeight = targetHeight; drawWidth = drawHeight * aspectRatio; }
+            const offsetX = (targetWidth - drawWidth) / 2; const offsetY = (targetHeight - drawHeight) / 2;
+            targetCtx.drawImage(baseSourceElement, offsetX, offsetY, drawWidth, drawHeight);
+            targetCtx.imageSmoothingEnabled = false; const segAlpha = Math.min(1.0, alpha + 0.2); targetCtx.globalAlpha = segAlpha;
+            targetCtx.drawImage(tempSegCanvas, 0, 0, predWidth, predHeight, 0, 0, targetWidth, targetHeight);
+            targetCtx.globalAlpha = alpha; targetCtx.drawImage(tempHeatCanvas, 0, 0, predWidth, predHeight, 0, 0, targetWidth, targetHeight);
+            targetCtx.globalAlpha = 1.0;
+        }
+
+        // --- Alpha Slider ---
+        alphaSlider.addEventListener('input', (event) => {
+            const alpha = parseFloat(event.target.value); alphaValueSpan.textContent = alpha.toFixed(2);
+            const source = isCameraMode ? videoElement : loadedImage;
+            if (source && currentPredictionArray) { drawCombined(source, currentPredictionArray, alpha, outputCombinedCanvas); }
+        });
+
+        function clearOutputCanvases() { outCombCtx.clearRect(0, 0, outputCombinedCanvas.width, outputCombinedCanvas.height); }
+        function resetUI() {
+            predictButton.disabled = true; loadedImage = null; currentPredictionArray = null;
+            if (!isCameraMode) {
+                inputCtx.clearRect(0, 0, inputCanvas.width, inputCanvas.height);
+                inputCanvasContainer.classList.remove('hidden'); // Ensure input canvas container is visible
+            } else {
+                 inputCanvasContainer.classList.add('hidden'); // Ensure hidden in camera mode
+            }
+            clearOutputCanvases(); setMessage(""); alphaSlider.value = 0.4; alphaValueSpan.textContent = "0.40";
+            imageInput.disabled = !model; imageInput.value = '';
+        }
+        function displayError(message) { setMessage(message); predictButton.disabled = true; loadedImage = null; currentPredictionArray = null; console.error(message); imageInput.disabled = !model; }
+
+        // --- Load Model & Init ---
+        loadAppModel();
+        switchMode('file'); // Start in file mode
+
+    </script>
+
+</body>
+</html>
