@@ -4,7 +4,7 @@ This is an HTML/JavaScript web application that runs a pre-trained U-Net++ segme
 
 It provides an interactive way to test and visualize the output of the chessboard segmentation + 4 corner heatmap U-Net++ model on different inputs from a website. [Live demo link](https://elucidation.github.io/chessdetect-tfjs/)
 
-https://github.com/user-attachments/assets/5fd9b3da-564d-4334-8b01-894a228740af
+https://github.com/user-attachments/assets/2e8f01a0-1ade-4cc1-901f-f1d7870debd6
 
 **Features:**
 
