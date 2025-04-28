@@ -288,12 +288,15 @@
             } else { resetUI(); }
         });
         function drawInputImage(img) {
-             inputCtx.clearRect(0, 0, inputCanvas.width, inputCanvas.height);
-             const aspectRatio = img.width / img.height; let drawWidth = inputCanvas.width; let drawHeight = inputCanvas.height;
-             const canvasRatio = inputCanvas.width / inputCanvas.height;
-             if (aspectRatio > canvasRatio) { drawWidth = inputCanvas.width; drawHeight = drawWidth / aspectRatio; } else { drawHeight = inputCanvas.height; drawWidth = drawHeight * aspectRatio; }
-             const offsetX = (inputCanvas.width - drawWidth) / 2; const offsetY = (inputCanvas.height - drawHeight) / 2;
-             inputCtx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+            inputCtx.clearRect(0, 0, inputCanvas.width, inputCanvas.height);
+            const aspectRatio = img.width / img.height;
+            const targetAspectRatio = inputCanvas.width / inputCanvas.height;
+            let cropWidth = img.width; let cropHeight = img.height;
+            if (aspectRatio > targetAspectRatio) { cropWidth = img.height * targetAspectRatio; } else { cropHeight = img.width / targetAspectRatio; }
+            const offsetX = (img.width - cropWidth) / 2;
+            const offsetY = (img.height - cropHeight) / 2;
+            inputCtx.drawImage(img, offsetX, offsetY, cropWidth, cropHeight, 0, 0, inputCanvas.width, inputCanvas.height);
+
         }
 
         // --- Prediction Trigger (Manual Button - File Mode) ---
@@ -350,16 +353,19 @@
                  const srcWidth = sourceElement.videoWidth || sourceElement.width;
                  const srcHeight = sourceElement.videoHeight || sourceElement.height;
                  if (!srcWidth || !srcHeight) { throw new Error("Source element has invalid dimensions."); }
-                 let tensor = tf.browser.fromPixels(sourceElement).toFloat();
-                 const aspectRatio = srcWidth / srcHeight; let newWidth = targetSize; let newHeight = targetSize;
-                 if (aspectRatio > 1) { newHeight = Math.max(1, Math.round(targetSize / aspectRatio)); } else { newWidth = Math.max(1, Math.round(targetSize * aspectRatio)); }
-                 const resized = tf.image.resizeBilinear(tensor, [newHeight, newWidth], true);
-                 const padHeight = targetSize - newHeight; const padWidth = targetSize - newWidth;
-                 const padTop = Math.floor(padHeight / 2); const padBottom = padHeight - padTop;
-                 const padLeft = Math.floor(padWidth / 2); const padRight = padWidth - padLeft;
-                 const paddings = [[padTop, padBottom], [padLeft, padRight], [0, 0]];
-                 const padded = tf.pad(resized, paddings, 0);
-                 const normalized = padded.div(tf.scalar(255.0));
+                 let tensor = tf.browser.fromPixels(sourceElement).toFloat();                 
+                 const aspectRatio = srcWidth / srcHeight;
+                 const targetAspectRatio = targetSize / targetSize; // Always 1 for square
+                 let cropWidth = srcWidth; let cropHeight = srcHeight;
+                 if (aspectRatio > targetAspectRatio) { cropWidth = srcHeight * targetAspectRatio; } else { cropHeight = srcWidth / targetAspectRatio; }
+                 const offsetX = (srcWidth - cropWidth) / 2; const offsetY = (srcHeight - cropHeight) / 2;
+                 const cropped = tf.image.cropAndResize(
+                     tensor.expandDims(0),
+                     [[offsetY / srcHeight, offsetX / srcWidth, (offsetY + cropHeight) / srcHeight, (offsetX + cropWidth) / srcWidth]],
+                     [0],
+                     [targetSize, targetSize]
+                 ).squeeze([0]);
+                 const normalized = cropped.div(tf.scalar(255.0));
                  const batched = normalized.expandDims(0);
                  tensor.dispose();
                  return batched;
@@ -391,10 +397,14 @@
             targetCtx.clearRect(0, 0, targetWidth, targetHeight); targetCtx.imageSmoothingEnabled = true;
             const baseWidth = baseSourceElement.videoWidth || baseSourceElement.width; const baseHeight = baseSourceElement.videoHeight || baseSourceElement.height;
             if (!baseWidth || !baseHeight) { return; }
-            const aspectRatio = baseWidth / baseHeight; let drawWidth = targetWidth; let drawHeight = targetHeight; const canvasRatio = targetWidth / targetHeight;
-            if (aspectRatio > canvasRatio) { drawWidth = targetWidth; drawHeight = drawWidth / aspectRatio; } else { drawHeight = targetHeight; drawWidth = drawHeight * aspectRatio; }
-            const offsetX = (targetWidth - drawWidth) / 2; const offsetY = (targetHeight - drawHeight) / 2;
-            targetCtx.drawImage(baseSourceElement, offsetX, offsetY, drawWidth, drawHeight);
+            const aspectRatio = baseWidth / baseHeight;
+            const targetAspectRatio = targetWidth / targetHeight;
+            let cropWidth = baseWidth; let cropHeight = baseHeight;
+            if (aspectRatio > targetAspectRatio) { cropWidth = baseHeight * targetAspectRatio; } else { cropHeight = baseWidth / targetAspectRatio; }
+            const offsetX = (baseWidth - cropWidth) / 2;
+            const offsetY = (baseHeight - cropHeight) / 2;
+            targetCtx.drawImage(baseSourceElement, offsetX, offsetY, cropWidth, cropHeight, 0, 0, targetWidth, targetHeight);
+
             targetCtx.imageSmoothingEnabled = false; const segAlpha = Math.min(1.0, alpha + 0.2); targetCtx.globalAlpha = segAlpha;
             targetCtx.drawImage(tempSegCanvas, 0, 0, predWidth, predHeight, 0, 0, targetWidth, targetHeight);
             targetCtx.globalAlpha = alpha; targetCtx.drawImage(tempHeatCanvas, 0, 0, predWidth, predHeight, 0, 0, targetWidth, targetHeight);
