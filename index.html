@@ -259,7 +259,7 @@
                 const warmupResult = model.predict(warmupTensor);
                 if (Array.isArray(warmupResult)) warmupResult.forEach(t => t.dispose()); else warmupResult.dispose();
                 warmupTensor.dispose();
-                setStatus('Model Ready'); console.log('Graph Model loaded.');
+                setStatus('Model Ready'); console.log(`Graph Model ${MODEL_URL} loaded.`);
                 imageInput.disabled = false; startCameraButton.disabled = false;
             } catch (error) {
                 console.error('Failed to load graph model:', error); setStatus(`Model Load Error!`);
