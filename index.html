@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>U-Net++ Predictor</title>
+    <title>Chessboard Finder</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgpu/dist/tf-backend-webgpu.js"></script>
+
     <style>
         /* Custom styles */
         body { font-family: 'Press Start 2P', cursive; overscroll-behavior: none; touch-action: manipulation; }
@@ -68,7 +70,7 @@
 
          <div class="mb-4 flex flex-col items-center border-t border-b border-indigo-200 py-3">
              <label for="alphaSlider" class="block text-xs font-medium text-gray-600 mb-2 uppercase tracking-wider">Overlay Alpha: <span id="alphaValue" class="font-bold text-indigo-600">0.40</span></label>
-             <input type="range" id="alphaSlider" min="0" max="1" step="0.05" value="0.4" class="w-full max-w-md">
+             <input type="range" id="alphaSlider" min="0" max="1" step="0.05" value="0.7" class="w-full max-w-md">
         </div>
 
         <div class="text-center text-gray-600 text-xs mb-4 h-4">Live FPS: <span id="fpsDisplay">-</span><div id="messageArea" class="text-center text-purple-700 text-xs mb-4 h-4"></div></div>
@@ -89,9 +91,11 @@
                 <a href="https://github.com/Elucidation/chessdetect-tfjs" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800 underline">Source Code on GitHub</a>
                 <br>
                 <a href="https://youtu.be/BVt12vzp_iM?si=TGQFCpzhNeoPmxRp" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800 underline">Video Explanation</a>
+                <br>
+                v1.03
             </p>
         </div>
-        </div>
+    </div>
 
     <script>
         // --- DOM Elements ---
@@ -118,33 +122,33 @@
 
         // Get 2D contexts
         const inputCtx = inputCanvas.getContext('2d');
-        const outCombCtx = outputCombinedCanvas.getContext('2d');
+        const outCombCtx = outputCombinedCanvas.getContext('2d'); // Still needed for drawing base image & overlays
 
         // --- Config ---
         const MODEL_URL = './tfjs_model_quantu8/model.json';
-        const TARGET_IMG_SIZE = 128;
+        const TARGET_IMG_SIZE = 128; // Model's expected input size
         const TARGET_FPS = 24;
         const MS_PER_FRAME = 1000 / TARGET_FPS;
 
         // --- State ---
         let loadedImage = null;
         let model = null;
-        let currentPredictionArray = null;
+        let lastPredictionTensor = null; // Store the last tensor for alpha adjustments
         let isPredicting = false;
         let isCameraMode = false;
         let isCameraRunning = false;
         let videoStream = null;
         let animationFrameId = null;
         let lastPredictTime = 0;
+        let lastPredictOnlyTime = 0; // Only time for last predict
         let frameCount = 0;
         let lastFpsUpdate = 0;
         let videoDevices = [];
         let currentDeviceId = null;
         let devicesEnumerated = false;
 
-        // --- Temporary Canvases ---
-        let tempSegCanvas = null; let tempHeatCanvas = null;
-        let tempSegCtx = null; let tempHeatCtx = null;
+        // --- Temporary Canvases (Still needed as targets for tf.browser.toPixels) ---
+        let tempCombinedCanvas = null;
 
         // --- Status Update Function ---
         function setStatus(text, showSpinner = false) { modelStatus.innerHTML = text + (showSpinner ? ' <div class="loader"></div>' : ''); }
@@ -156,23 +160,23 @@
         modeCameraButton.addEventListener('click', () => switchMode('camera'));
         function switchMode(mode) {
              if (mode === 'file') {
-                isCameraMode = false; stopCamera();
+                isCameraMode = false; stopCamera(); // Stop camera if switching away
                 fileInputSection.classList.remove('hidden');
                 cameraInputSection.classList.add('hidden');
                 inputCanvasContainer.classList.remove('hidden'); // Show input canvas
                 modeFileButton.classList.replace('bg-gray-300', 'bg-purple-600'); modeFileButton.classList.replace('text-gray-700', 'text-white');
                 modeFileButton.classList.add('ring-2', 'ring-purple-600', 'z-10'); modeCameraButton.classList.replace('bg-purple-600', 'bg-gray-300');
                 modeCameraButton.classList.replace('text-white', 'text-gray-700'); modeCameraButton.classList.remove('ring-2', 'ring-purple-600', 'z-10');
-                resetUI();
+                resetUI(); // Reset UI elements for file mode
             } else { // camera mode
                 isCameraMode = true;
                 fileInputSection.classList.add('hidden');
                 cameraInputSection.classList.remove('hidden');
-                inputCanvasContainer.classList.add('hidden'); // Hide input canvas
+                inputCanvasContainer.classList.add('hidden'); // Hide input canvas in camera mode
                 modeCameraButton.classList.replace('bg-gray-300', 'bg-purple-600'); modeCameraButton.classList.replace('text-gray-700', 'text-white');
                 modeCameraButton.classList.add('ring-2', 'ring-purple-600', 'z-10'); modeFileButton.classList.replace('bg-purple-600', 'bg-gray-300');
                 modeFileButton.classList.replace('text-white', 'text-gray-700'); modeFileButton.classList.remove('ring-2', 'ring-purple-600', 'z-10');
-                resetUI();
+                resetUI(); // Reset UI elements for camera mode
             }
         }
 
@@ -219,7 +223,7 @@
                          else { switchCameraButton.disabled = !(videoDevices.length > 1 && isCameraRunning); } // Update button state
                          setMessage('Camera running. Starting predictions...');
                          lastPredictTime = performance.now(); frameCount = 0; lastFpsUpdate = lastPredictTime;
-                         predictLoop();
+                         predictLoop(); // Start the prediction loop
                      }).catch(err => { console.error("Video play() failed:", err); setCamError(`Autoplay failed: ${err.message}.`); stopCameraButton.disabled = false; });
                  };
                   videoElement.onerror = (e) => { console.error("Video Element Error:", e); setCamError("Error playing video stream."); stopCamera(); }
@@ -234,7 +238,8 @@
             videoElement.srcObject = null; isCameraRunning = false; currentDeviceId = null;
             startCameraButton.disabled = !model; stopCameraButton.disabled = true; switchCameraButton.disabled = true;
             setMessage('Camera stopped.'); clearOutputCanvases();
-            if (!isCameraMode) inputCtx.clearRect(0, 0, inputCanvas.width, inputCanvas.height); // Clear input only if relevant
+            // Clear input canvas only if in file mode (though it's hidden in camera mode anyway)
+            if (!isCameraMode) inputCtx.clearRect(0, 0, inputCanvas.width, inputCanvas.height);
             fpsDisplay.textContent = '-';
         }
         async function switchCamera() {
@@ -244,23 +249,29 @@
             const nextIndex = (currentIndex + 1) % videoDevices.length;
             const nextDeviceId = videoDevices[nextIndex].deviceId;
             console.log(`Switching from ${currentDeviceId} to ${nextDeviceId}`);
-            stopCamera();
-            await new Promise(resolve => setTimeout(resolve, 100)); // Short delay
-            await startCamera(nextDeviceId);
+            stopCamera(); // Stop current stream first
+            await new Promise(resolve => setTimeout(resolve, 100)); // Short delay might help hardware release
+            await startCamera(nextDeviceId); // Start with the new device ID
         }
 
         // --- Model Loading ---
         async function loadAppModel() {
              setStatus('Loading model...', true); imageInput.disabled = true; predictButton.disabled = true; startCameraButton.disabled = true; switchCameraButton.disabled = true;
             try {
+                await tf.setBackend('webgpu');
                 model = await tf.loadGraphModel(MODEL_URL);
                 setStatus('Warming up...', true);
+                // Warmup with the correct input size
                 const warmupTensor = tf.zeros([1, TARGET_IMG_SIZE, TARGET_IMG_SIZE, 3]);
                 const warmupResult = model.predict(warmupTensor);
+                // Dispose warmup results (handle potential array output)
                 if (Array.isArray(warmupResult)) warmupResult.forEach(t => t.dispose()); else warmupResult.dispose();
                 warmupTensor.dispose();
                 setStatus('Model Ready'); console.log(`Graph Model ${MODEL_URL} loaded.`);
-                imageInput.disabled = false; startCameraButton.disabled = false;
+                // Enable controls now that model is ready
+                imageInput.disabled = false;
+                startCameraButton.disabled = false;
+                // Predict button is enabled only when an image is loaded in file mode
             } catch (error) {
                 console.error('Failed to load graph model:', error); setStatus(`Model Load Error!`);
                 setMessage("Model loading failed. Check console/path.");
@@ -269,81 +280,189 @@
 
         // --- Image Loading & Display (File Mode) ---
         imageInput.addEventListener('change', async (event) => {
-            if (isCameraMode) return; const file = event.target.files[0];
+            if (isCameraMode) return; // Ignore if in camera mode
+            const file = event.target.files[0];
             if (file) {
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     const img = new Image();
                     img.onload = async () => {
-                        loadedImage = img; drawInputImage(img); clearOutputCanvases(); currentPredictionArray = null;
-                        setMessage(model ? 'Model ready.' : 'Model not loaded.');
-                        if (model && !isPredicting) { setMessage('Image loaded. Auto-predicting...'); await runPrediction(); }
-                        else if (model) { predictButton.disabled = false; }
+                        loadedImage = img;
+                        drawInputImage(img); // Display the loaded image on the input canvas
+                        clearOutputCanvases(); // Clear previous predictions
+                        if (lastPredictionTensor) { // Dispose old tensor if a new image is loaded
+                             tf.dispose(lastPredictionTensor);
+                             lastPredictionTensor = null;
+                        }
+                        if (model && !isPredicting) {
+                            setMessage('Image loaded. Auto-predicting...');
+                            await runPrediction(); // Automatically predict on new image load
+                        } else if (model) {
+                            // Enable predict button only if model loaded but not auto-predicting (shouldn't happen often)
+                            predictButton.disabled = false;
+                            setMessage('Image loaded. Ready to predict.');
+                        } else {
+                            setMessage('Image loaded. Model not ready.');
+                        }
                     };
                     img.onerror = () => { displayError("Error loading image."); }
                     img.src = e.target.result;
                 };
                 reader.onerror = () => { displayError("Error reading file."); }
                 reader.readAsDataURL(file);
-            } else { resetUI(); }
+            } else {
+                // If no file selected (e.g., user cancelled), reset relevant parts
+                resetUI();
+            }
         });
+
+        // Draws the loaded image onto the input canvas, preserving aspect ratio
         function drawInputImage(img) {
             inputCtx.clearRect(0, 0, inputCanvas.width, inputCanvas.height);
             const aspectRatio = img.width / img.height;
-            const targetAspectRatio = inputCanvas.width / inputCanvas.height;
+            const targetAspectRatio = inputCanvas.width / inputCanvas.height; // Assuming square canvas
             let cropWidth = img.width; let cropHeight = img.height;
-            if (aspectRatio > targetAspectRatio) { cropWidth = img.height * targetAspectRatio; } else { cropHeight = img.width / targetAspectRatio; }
+            // Calculate cropping dimensions to fit the target aspect ratio
+            if (aspectRatio > targetAspectRatio) { // Image is wider than target
+                cropWidth = img.height * targetAspectRatio;
+            } else { // Image is taller than target
+                cropHeight = img.width / targetAspectRatio;
+            }
             const offsetX = (img.width - cropWidth) / 2;
             const offsetY = (img.height - cropHeight) / 2;
+            // Draw the cropped portion of the image onto the canvas
             inputCtx.drawImage(img, offsetX, offsetY, cropWidth, cropHeight, 0, 0, inputCanvas.width, inputCanvas.height);
-
         }
 
         // --- Prediction Trigger (Manual Button - File Mode) ---
         predictButton.addEventListener('click', async () => {
-             if (isCameraMode || !loadedImage || !model) { displayError("Switch to File mode and load image first."); return; }
-             if (isPredicting) return; await runPrediction();
+             if (isCameraMode || !loadedImage || !model) {
+                 displayError("Switch to File mode and load image first.");
+                 return;
+             }
+             if (isPredicting) return; // Don't predict if already predicting
+             await runPrediction();
         });
 
-        // --- Core Prediction Logic ---
+
+        // --- Core Prediction Logic (Refactored) ---
         async function runPrediction(sourceElement = null) {
-             const currentSource = sourceElement || loadedImage;
-             if (!currentSource || !model || isPredicting) { return; }
-             isPredicting = true;
-             if (!isCameraMode) { setStatus('Processing...', true); predictButton.disabled = true; imageInput.disabled = true; setMessage('Preprocessing & Predicting...'); await new Promise(resolve => setTimeout(resolve, 10)); }
-             let inputTensor = null; let predictionTensor = null;
-             try {
-                 inputTensor = preprocessSource(currentSource, TARGET_IMG_SIZE);
-                 const tStart = performance.now();
-                 predictionTensor = tf.tidy(() => model.predict(inputTensor));
-                 const predictTime = performance.now() - tStart;
-                 currentPredictionArray = await predictionTensor.squeeze().array();
-                 drawCombined(currentSource, currentPredictionArray, parseFloat(alphaSlider.value), outputCombinedCanvas);
-                 if (!isCameraMode) { setMessage(`Prediction took ${predictTime.toFixed(0)}ms`); }
-             } catch (error) {
-                 console.error("Prediction Error:", error); if (!isCameraMode) displayError(`Processing error: ${error.message}`); currentPredictionArray = null;
-             } finally {
-                  isPredicting = false;
-                  if (!isCameraMode) { setStatus('Model Ready'); predictButton.disabled = !model || !loadedImage; imageInput.disabled = !model; }
-                  if(inputTensor) inputTensor.dispose(); if(predictionTensor) predictionTensor.dispose();
-             }
+            const currentSource = sourceElement || loadedImage;
+            if (!currentSource || !model || isPredicting) {
+                return; // Exit if no source, model, or already predicting
+            }
+            isPredicting = true; // Set prediction flag
+
+            // Update UI for file mode prediction start
+            if (!isCameraMode) {
+                setStatus('Processing...', true);
+                predictButton.disabled = true;
+                imageInput.disabled = true; // Disable while predicting
+                setMessage('Preprocessing & Predicting...');
+                await new Promise(resolve => setTimeout(resolve, 10)); // Allow UI to update
+            }
+
+            let inputTensor = null;
+            let outputTensor = null; // Keep the raw tensor output from the model
+
+            try {
+                // Preprocess the source image/video frame into a tensor
+                inputTensor = preprocessSource(currentSource, TARGET_IMG_SIZE);
+
+                const tStart = performance.now();
+
+                // Run model prediction
+                const predictionResult = tf.tidy(() => model.predict(inputTensor));
+
+                // Handle potential array output from model and get the primary tensor
+                outputTensor = Array.isArray(predictionResult) ? predictionResult[0] : predictionResult;
+
+                // Squeeze the batch dimension if present (e.g., shape [1, H, W, C] -> [H, W, C])
+                if (outputTensor.shape.length === 4 && outputTensor.shape[0] === 1) {
+                    const squeezedTensor = outputTensor.squeeze([0]);
+                    outputTensor.dispose(); // Dispose the original tensor with batch dim
+                    outputTensor = squeezedTensor; // Use the squeezed tensor
+                }
+                // outputTensor should now have shape [H, W, C] (e.g., [128, 128, 5])
+
+                const predictTime = performance.now() - tStart;
+                lastPredictOnlyTime = predictTime;
+
+                // Dispose the previously stored tensor before keeping the new one
+                if (lastPredictionTensor) {
+                    tf.dispose(lastPredictionTensor);
+                    lastPredictionTensor = null;
+                }
+                // Keep the new tensor so it's not disposed by tf.tidy and can be used by alpha slider
+                lastPredictionTensor = tf.keep(outputTensor);
+
+                // Draw the combined output using the tensor
+                await drawCombined(currentSource, outputTensor, parseFloat(alphaSlider.value), outputCombinedCanvas);
+
+                if (!isCameraMode) {
+                    setMessage(`Prediction took ${predictTime.toFixed(0)}ms`);
+                }
+
+            } catch (error) {
+                console.error("Prediction Error:", error);
+                if (!isCameraMode) displayError(`Processing error: ${error.message}`);
+                // Ensure tensor is disposed on error
+                if (lastPredictionTensor) {
+                    tf.dispose(lastPredictionTensor);
+                    lastPredictionTensor = null;
+                }
+            } finally {
+                isPredicting = false; // Clear prediction flag
+                // Update UI for file mode prediction end
+                if (!isCameraMode) {
+                    setStatus('Model Ready');
+                    // Re-enable controls only if model and image are loaded
+                    predictButton.disabled = !model || !loadedImage;
+                    imageInput.disabled = !model;
+                }
+                // Dispose tensors used specifically in this run (input and the local outputTensor ref)
+                // lastPredictionTensor is intentionally kept
+                if (inputTensor) inputTensor.dispose();
+                if (outputTensor) outputTensor.dispose();
+            }
         }
+
 
         // --- Real-time Prediction Loop (Camera Mode) ---
         async function predictLoop() {
-            if (!isCameraRunning || !model) { setMessage(model ? 'Camera stopped.' : 'Camera stopped, model unloaded.'); fpsDisplay.textContent = '-'; return; }
-            const now = performance.now(); const elapsed = now - lastPredictTime;
-            // Update FPS counter
-            frameCount++;
-            if (now - lastFpsUpdate > 1000) { const fps = frameCount / ((now - lastFpsUpdate) / 1000); fpsDisplay.textContent = fps.toFixed(1); frameCount = 0; lastFpsUpdate = now; }
-            // Throttle predictions
-            if (elapsed > MS_PER_FRAME && !isPredicting) {
-                lastPredictTime = now;
-                if (videoElement.readyState >= videoElement.HAVE_CURRENT_DATA) {
-                    setMessage(" "); await runPrediction(videoElement);
-                }
-            }
-            animationFrameId = requestAnimationFrame(predictLoop);
+            if (!isCameraRunning || !model) { // Stop loop if camera off or model gone
+                setMessage(model ? 'Camera stopped.' : 'Camera stopped, model unloaded.');
+                fpsDisplay.textContent = '-';
+                return;
+             }
+
+             const now = performance.now();
+             const elapsed = now - lastPredictTime;
+
+             // Update FPS counter approx every second
+             frameCount++;
+             if (now - lastFpsUpdate > 1000) {
+                const timeTakenMs = now - lastFpsUpdate; // Time in ms.
+                const perStepAvgMs = timeTakenMs / frameCount;
+                const fps = frameCount / (timeTakenMs / 1000);
+                // fpsDisplay.textContent = `${fps.toFixed(1)} | ${perStepAvgMs.toFixed(1)}ms/step | ${lastPredictOnlyTime.toFixed(1)}ms/predict`;
+                fpsDisplay.textContent = fps.toFixed(1);
+                frameCount = 0;
+                lastFpsUpdate = now;
+             }
+
+             // Throttle predictions based on TARGET_FPS
+             if (elapsed > MS_PER_FRAME && !isPredicting) {
+                 lastPredictTime = now; // Update time *before* prediction starts
+                 // Ensure video frame is ready before trying to predict
+                 if (videoElement.readyState >= videoElement.HAVE_CURRENT_DATA) {
+                      setMessage(" "); // Clear previous messages in camera mode
+                      await runPrediction(videoElement); // Run prediction on the current video frame
+                 }
+             }
+
+             // Request the next frame
+             animationFrameId = requestAnimationFrame(predictLoop);
         }
 
 
@@ -352,89 +471,212 @@
              return tf.tidy(() => {
                  const srcWidth = sourceElement.videoWidth || sourceElement.width;
                  const srcHeight = sourceElement.videoHeight || sourceElement.height;
+
                  if (!srcWidth || !srcHeight) { throw new Error("Source element has invalid dimensions."); }
-                 let tensor = tf.browser.fromPixels(sourceElement).toFloat();                 
+
+                 // Create tensor from pixels
+                 let tensor = tf.browser.fromPixels(sourceElement).toFloat();
+
+                 // Calculate cropping to maintain aspect ratio for square target
                  const aspectRatio = srcWidth / srcHeight;
-                 const targetAspectRatio = targetSize / targetSize; // Always 1 for square
+                 const targetAspectRatio = 1.0; // targetSize / targetSize
                  let cropWidth = srcWidth; let cropHeight = srcHeight;
-                 if (aspectRatio > targetAspectRatio) { cropWidth = srcHeight * targetAspectRatio; } else { cropHeight = srcWidth / targetAspectRatio; }
-                 const offsetX = (srcWidth - cropWidth) / 2; const offsetY = (srcHeight - cropHeight) / 2;
+                 if (aspectRatio > targetAspectRatio) { // Wider than target
+                     cropWidth = srcHeight * targetAspectRatio;
+                 } else { // Taller than target
+                     cropHeight = srcWidth / targetAspectRatio;
+                 }
+                 const offsetX = (srcWidth - cropWidth) / 2;
+                 const offsetY = (srcHeight - cropHeight) / 2;
+
+                 // Define the crop region relative to original dimensions [y1, x1, y2, x2]
+                 const cropBox = [[
+                    offsetY / srcHeight,
+                    offsetX / srcWidth,
+                    (offsetY + cropHeight) / srcHeight,
+                    (offsetX + cropWidth) / srcWidth
+                 ]];
+
+                 // Crop and resize using tf.image.cropAndResize
+                 // Input needs batch dimension, so expand dims
                  const cropped = tf.image.cropAndResize(
-                     tensor.expandDims(0),
-                     [[offsetY / srcHeight, offsetX / srcWidth, (offsetY + cropHeight) / srcHeight, (offsetX + cropWidth) / srcWidth]],
-                     [0],
-                     [targetSize, targetSize]
-                 ).squeeze([0]);
+                     tensor.expandDims(0), // Add batch dim: [1, H, W, C]
+                     cropBox,              // Boxes normalized coordinates
+                     [0],                  // Box indices (only one box)
+                     [targetSize, targetSize] // Target output size [height, width]
+                 ); // Output shape: [1, targetSize, targetSize, 3]
+
+                 // Normalize to 0-1 range
                  const normalized = cropped.div(tf.scalar(255.0));
-                 const batched = normalized.expandDims(0);
+
+                 // Dispose the initial tensor from pixels
                  tensor.dispose();
-                 return batched;
+
+                 // Return the preprocessed tensor (still has batch dimension)
+                 // Shape: [1, targetSize, targetSize, 3]
+                 return normalized;
              });
         }
 
-        // --- Visualization Function ---
-        function drawCombined(baseSourceElement, predictionArray, alpha, targetCanvas) {
-            if (!baseSourceElement || !predictionArray) return;
-            const targetCtx = targetCanvas.getContext('2d'); const targetWidth = targetCanvas.width; const targetHeight = targetCanvas.height;
-            const predHeight = predictionArray.length; const predWidth = predictionArray[0].length; const channels = predictionArray[0][0].length;
-            if (channels !== 5) { console.error(`Prediction has ${channels} channels, expected 5.`); return; }
-            if (!tempSegCanvas || tempSegCanvas.width !== predWidth || tempSegCanvas.height !== predHeight) {
-                tempSegCanvas = document.createElement('canvas'); tempSegCanvas.width = predWidth; tempSegCanvas.height = predHeight; tempSegCtx = tempSegCanvas.getContext('2d');
-                tempHeatCanvas = document.createElement('canvas'); tempHeatCanvas.width = predWidth; tempHeatCanvas.height = predHeight; tempHeatCtx = tempHeatCanvas.getContext('2d');
-            }
-            const segImageData = tempSegCtx.createImageData(predWidth, predHeight); const heatImageData = tempHeatCtx.createImageData(predWidth, predHeight);
-            const segData = segImageData.data; const heatData = heatImageData.data; const heatmapColors = [ [255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0] ];
-            for (let y = 0; y < predHeight; y++) {
-                for (let x = 0; x < predWidth; x++) {
-                    const pixelIndex = (y * predWidth + x) * 4; const predictionPixel = predictionArray[y][x];
-                    const segValue = Math.round(predictionPixel[0] * 255); segData[pixelIndex] = segValue; segData[pixelIndex + 1] = segValue; segData[pixelIndex + 2] = segValue; segData[pixelIndex + 3] = 255;
-                    let r = 0, g = 0, b = 0;
-                    for (let c = 0; c < 4; c++) { const hv = predictionPixel[c + 1]; r += hv * heatmapColors[c][0]; g += hv * heatmapColors[c][1]; b += hv * heatmapColors[c][2]; }
-                    heatData[pixelIndex] = Math.min(255, Math.round(r)); heatData[pixelIndex + 1] = Math.min(255, Math.round(g)); heatData[pixelIndex + 2] = Math.min(255, Math.round(b)); heatData[pixelIndex + 3] = 255;
-                }
-            }
-            tempSegCtx.putImageData(segImageData, 0, 0); tempHeatCtx.putImageData(heatImageData, 0, 0);
-            targetCtx.clearRect(0, 0, targetWidth, targetHeight); targetCtx.imageSmoothingEnabled = true;
-            const baseWidth = baseSourceElement.videoWidth || baseSourceElement.width; const baseHeight = baseSourceElement.videoHeight || baseSourceElement.height;
-            if (!baseWidth || !baseHeight) { return; }
-            const aspectRatio = baseWidth / baseHeight;
-            const targetAspectRatio = targetWidth / targetHeight;
-            let cropWidth = baseWidth; let cropHeight = baseHeight;
-            if (aspectRatio > targetAspectRatio) { cropWidth = baseHeight * targetAspectRatio; } else { cropHeight = baseWidth / targetAspectRatio; }
-            const offsetX = (baseWidth - cropWidth) / 2;
-            const offsetY = (baseHeight - cropHeight) / 2;
-            targetCtx.drawImage(baseSourceElement, offsetX, offsetY, cropWidth, cropHeight, 0, 0, targetWidth, targetHeight);
 
-            targetCtx.imageSmoothingEnabled = false; const segAlpha = Math.min(1.0, alpha + 0.2); targetCtx.globalAlpha = segAlpha;
-            targetCtx.drawImage(tempSegCanvas, 0, 0, predWidth, predHeight, 0, 0, targetWidth, targetHeight);
-            targetCtx.globalAlpha = alpha; targetCtx.drawImage(tempHeatCanvas, 0, 0, predWidth, predHeight, 0, 0, targetWidth, targetHeight);
-            targetCtx.globalAlpha = 1.0;
+        // --- Visualization Function ---
+        async function drawCombined(baseSourceElement, predictionTensor, alpha, targetCanvas) {
+            if (!baseSourceElement || !predictionTensor) return;
+
+            const targetCtx = targetCanvas.getContext('2d');
+            const targetWidth = targetCanvas.width;
+            const targetHeight = targetCanvas.height;
+
+            const [predHeight, predWidth, channels] = predictionTensor.shape;
+            if (channels !== 5) { console.error(`Prediction tensor has ${channels} channels, expected 5.`); return; }
+
+            // --- Use only ONE temporary canvas ---
+            if (!tempCombinedCanvas || tempCombinedCanvas.width !== predWidth || tempCombinedCanvas.height !== predHeight) {
+                tempCombinedCanvas = document.createElement('canvas');
+                tempCombinedCanvas.width = predWidth;
+                tempCombinedCanvas.height = predHeight;
+            }
+
+            const heatmapColorsTensor = tf.tensor2d([
+                [255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]
+            ], [4, 3], 'float32');
+
+            // --- Generate Combined Visualization Tensor ---
+            const finalDrawTensor = tf.tidy(() => {
+                // Calculate desired display alphas
+                const segDisplayAlpha = Math.min(1.0, alpha + 0.2);
+
+                // --- Segmentation Mask (Channel 0) ---
+                const segChannel = tf.slice(predictionTensor, [0, 0, 0], [predHeight, predWidth, 1]);
+                const segChannelScaled = segChannel.mul(175); // Segmentation as not fully white gray
+                const segRgb = tf.concat([segChannelScaled, segChannelScaled, segChannelScaled], 2); // Shape [H, W, 3]
+
+                // --- Heatmap (Channels 1-4) ---
+                const heatmapChannels = tf.slice(predictionTensor, [0, 0, 1], [predHeight, predWidth, 4]);
+                const heatmapChannelsReshaped = heatmapChannels.reshape([predHeight * predWidth, 4]);
+                const heatmapCombined = tf.matMul(heatmapChannelsReshaped, heatmapColorsTensor);
+                const heatmapRgb = heatmapCombined.reshape([predHeight, predWidth, 3]); // Shape [H, W, 3]
+
+                // --- Blend Segmentation and Heatmap using Tensor Ops ---
+                // Multiply each by their intended display alpha
+                const segWeighted = segRgb.mul(segDisplayAlpha);
+                const heatWeighted = heatmapRgb.mul(alpha);
+
+                // Add them together (simple additive blending)
+                // NOTE: This is different from overlay compositing!
+                // Adjust blending logic here if needed (e.g., screen, multiply)
+                const blendedRgb = segWeighted.add(heatWeighted);
+
+                // Clip final values and convert to Int32 for toPixels
+                const finalInt = blendedRgb.clipByValue(0, 255).toInt();
+
+                return finalInt; // Shape [H, W, 3]
+             });
+
+             // --- Draw SINGLE Tensor to Temporary Canvas ---
+             await tf.browser.draw(finalDrawTensor, tempCombinedCanvas);
+
+             // --- Dispose intermediate tensors ---
+             finalDrawTensor.dispose();
+             heatmapColorsTensor.dispose();
+
+             // --- Draw Base Image ---
+             targetCtx.clearRect(0, 0, targetWidth, targetHeight);
+             targetCtx.imageSmoothingEnabled = true;
+             const baseWidth = baseSourceElement.videoWidth || baseSourceElement.width;
+             const baseHeight = baseSourceElement.videoHeight || baseSourceElement.height;
+             if (!baseWidth || !baseHeight) { console.warn("Base source has no dimensions."); return; }
+             const aspectRatio = baseWidth / baseHeight;
+             const targetAspectRatio = targetWidth / targetHeight;
+             let cropWidth = baseWidth; let cropHeight = baseHeight;
+             if (aspectRatio > targetAspectRatio) { cropWidth = baseHeight * targetAspectRatio; } else { cropHeight = baseWidth / targetAspectRatio; }
+             const offsetX = (baseWidth - cropWidth) / 2;
+             const offsetY = (baseHeight - cropHeight) / 2;
+             targetCtx.drawImage(baseSourceElement, offsetX, offsetY, cropWidth, cropHeight, 0, 0, targetWidth, targetHeight);
+
+             // --- Draw SINGLE Overlay ---
+             targetCtx.imageSmoothingEnabled = false; // Disable smoothing for pixelated overlay
+             targetCtx.globalAlpha = alpha; // Draw the pre-blended overlay fully opaque
+             targetCtx.drawImage(tempCombinedCanvas, 0, 0, predWidth, predHeight, 0, 0, targetWidth, targetHeight); // Scale prediction canvas to target size
+
+             // Reset alpha
+             targetCtx.globalAlpha = 1.0;
         }
 
-        // --- Alpha Slider ---
-        alphaSlider.addEventListener('input', (event) => {
-            const alpha = parseFloat(event.target.value); alphaValueSpan.textContent = alpha.toFixed(2);
+
+        // --- Alpha Slider (Refactored) ---
+        alphaSlider.addEventListener('input', async (event) => { // Added async
+            const alpha = parseFloat(event.target.value);
+            alphaValueSpan.textContent = alpha.toFixed(2); // Update displayed value
+
             const source = isCameraMode ? videoElement : loadedImage;
-            if (source && currentPredictionArray) { drawCombined(source, currentPredictionArray, alpha, outputCombinedCanvas); }
+
+            // Use the stored tensor (lastPredictionTensor) to redraw immediately
+            // This avoids re-running the model just for an alpha change
+            if (source && lastPredictionTensor) {
+                 // Avoid drawing if a prediction is currently running (esp. in camera mode)
+                 // This prevents potential race conditions or drawing inconsistencies
+                 if (!isPredicting) {
+                    await drawCombined(source, lastPredictionTensor, alpha, outputCombinedCanvas);
+                 }
+            }
         });
 
-        function clearOutputCanvases() { outCombCtx.clearRect(0, 0, outputCombinedCanvas.width, outputCombinedCanvas.height); }
+
+        // Clears only the output visualization canvases
+        function clearOutputCanvases() {
+            outCombCtx.clearRect(0, 0, outputCombinedCanvas.width, outputCombinedCanvas.height);
+        }
+
+        // Reset UI elements and state, disposing the stored tensor
         function resetUI() {
-            predictButton.disabled = true; loadedImage = null; currentPredictionArray = null;
+            predictButton.disabled = true; // Disable manual predict initially
+            loadedImage = null;
+
+            // Dispose the stored prediction tensor if it exists
+            if (lastPredictionTensor) {
+                tf.dispose(lastPredictionTensor);
+                lastPredictionTensor = null;
+            }
+
+            // Clear canvases based on mode
+            clearOutputCanvases();
             if (!isCameraMode) {
                 inputCtx.clearRect(0, 0, inputCanvas.width, inputCanvas.height);
-                inputCanvasContainer.classList.remove('hidden'); // Ensure input canvas container is visible
+                inputCanvasContainer.classList.remove('hidden'); // Ensure input canvas is visible in file mode
             } else {
                  inputCanvasContainer.classList.add('hidden'); // Ensure hidden in camera mode
             }
-            clearOutputCanvases(); setMessage(""); alphaSlider.value = 0.4; alphaValueSpan.textContent = "0.40";
-            imageInput.disabled = !model; imageInput.value = '';
+
+            setMessage(""); // Clear any messages
+            alphaSlider.value = 0.7; // Reset slider
+            alphaValueSpan.textContent = "0.7";
+            imageInput.disabled = !model; // Disable file input if model not loaded
+            imageInput.value = ''; // Clear file input selection
+
+             // Reset camera button states appropriately
+            if (model) { startCameraButton.disabled = false; }
+            stopCameraButton.disabled = true;
+            switchCameraButton.disabled = true;
         }
-        function displayError(message) { setMessage(message); predictButton.disabled = true; loadedImage = null; currentPredictionArray = null; console.error(message); imageInput.disabled = !model; }
+
+        // Display error message and reset state, disposing tensor
+        function displayError(message) {
+             setMessage(message);
+             predictButton.disabled = true; // Disable predict on error
+             loadedImage = null;
+             // Dispose the stored prediction tensor on error
+             if (lastPredictionTensor) {
+                 tf.dispose(lastPredictionTensor);
+                 lastPredictionTensor = null;
+             }
+             console.error(message);
+             imageInput.disabled = !model; // Re-enable based on model status
+        }
 
         // --- Load Model & Init ---
-        loadAppModel();
-        switchMode('file'); // Start in file mode
+        loadAppModel();       // Start loading the model immediately
+        switchMode('file'); // Start in file mode by default
 
     </script>
 
