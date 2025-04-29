@@ -393,8 +393,8 @@
                     tf.dispose(lastPredictionTensor);
                     lastPredictionTensor = null;
                 }
-                // Keep the new tensor so it's not disposed by tf.tidy and can be used by alpha slider
-                lastPredictionTensor = tf.keep(outputTensor);
+                // Keep a cloned tensor so it's not disposed by tf.tidy to be used by alpha slider
+                lastPredictionTensor = tf.keep(outputTensor.clone());
 
                 // Draw the combined output using the tensor
                 await drawCombined(currentSource, outputTensor, parseFloat(alphaSlider.value), outputCombinedCanvas);
