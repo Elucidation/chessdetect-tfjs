@@ -71,6 +71,7 @@
          <div class="mb-4 flex flex-col items-center border-t border-b border-indigo-200 py-3">
              <label for="alphaSlider" class="block text-xs font-medium text-gray-600 mb-2 uppercase tracking-wider">Overlay Alpha: <span id="alphaValue" class="font-bold text-indigo-600">0.40</span></label>
              <input type="range" id="alphaSlider" min="0" max="1" step="0.05" value="0.7" class="w-full max-w-md">
+             <button id="togglePeaks" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-5 rounded-md shadow-md text-sm disabled:opacity-50">Toggle Peaks</button>
         </div>
 
         <div class="text-center text-gray-600 text-xs mb-4 h-4">Live FPS: <span id="fpsDisplay">-</span><div id="messageArea" class="text-center text-purple-700 text-xs mb-4 h-4"></div></div>
@@ -118,6 +119,7 @@
         const camErrorMsg = document.getElementById('camErrorMsg');
         const inputCanvasContainer = document.getElementById('inputCanvasContainer');
         const inputCanvasLabel = document.getElementById('inputCanvasLabel');
+        const togglePeaksButton = document.getElementById('togglePeaks');
         const fpsDisplay = document.getElementById('fpsDisplay');
 
         // Get 2D contexts
@@ -137,6 +139,7 @@
         let isPredicting = false;
         let isCameraMode = false;
         let isCameraRunning = false;
+        let drawPeakOutlines = false;
         let videoStream = null;
         let animationFrameId = null;
         let lastPredictTime = 0;
@@ -427,6 +430,27 @@
             }
         }
 
+        // --- Function to Find Heatmap Peaks ---
+        async function findHeatmapPeaks(predictionTensor) {
+            if (!predictionTensor) return null;
+            const [predHeight, predWidth, _] = predictionTensor.shape;
+            const peaks = [];
+            for (let i = 1; i <= 4; i++) { // Channels 1-4 for heatmaps
+                const peakCoords = tf.tidy(() => {
+                    // Get flattened 1d array argmax for each keypoint heatmap channel
+                    const heatmap = predictionTensor.slice([0, 0, i], [predHeight, predWidth, 1]).as1D();
+                    const flatIndex = heatmap.argMax();
+                    const flatIndexVal = flatIndex.dataSync()[0];
+                    // ravel back to x,y coordinates
+                    const y = Math.floor(flatIndexVal / predWidth);
+                    const x = flatIndexVal % predWidth;
+                    return { x, y };
+                });
+                peaks.push(peakCoords);
+            }
+            return peaks;
+        }
+
 
         // --- Real-time Prediction Loop (Camera Mode) ---
         async function predictLoop() {
@@ -570,6 +594,9 @@
                 // Clip final values and convert to Int32 for toPixels
                 const finalInt = blendedRgb.clipByValue(0, 255).toInt();
 
+                // TODO: Draw overlay points and lines on image
+                // findHeatmapPeaks()
+
                 return finalInt; // Shape [H, W, 3]
              });
 
@@ -599,12 +626,61 @@
              targetCtx.globalAlpha = alpha; // Draw the pre-blended overlay fully opaque
              targetCtx.drawImage(tempCombinedCanvas, 0, 0, predWidth, predHeight, 0, 0, targetWidth, targetHeight); // Scale prediction canvas to target size
 
+            if (drawPeakOutlines) {
+                // --- Find Heatmap Peaks ---
+                // Note: findHeatmapPeaks handles its own tf.tidy internally
+                const heatmapPeaks = await findHeatmapPeaks(predictionTensor); // Get array of {x, y}
+
+                // --- Scale Coordinates and Draw Points/Lines ---
+                if (heatmapPeaks && heatmapPeaks.length === 4) {
+                    const scaleX = targetWidth / predWidth;
+                    const scaleY = targetHeight / predHeight;
+
+                    // Scale peaks to the target canvas dimensions
+                    const scaledPeaks = heatmapPeaks.map(p => ({
+                        x: p.x * scaleX,
+                        y: p.y * scaleY
+                    }));
+
+                    // --- Draw Points ---
+                    const pointColors = ['red', 'lime', 'blue', 'yellow']; // Colors for points 1-4
+                    const pointRadius = 5; // Adjust size as needed
+
+                    scaledPeaks.forEach((p, index) => {
+                        targetCtx.fillStyle = pointColors[index % pointColors.length];
+                        targetCtx.beginPath();
+                        targetCtx.arc(p.x, p.y, pointRadius, 0, 2 * Math.PI); // Draw a circle
+                        targetCtx.fill();
+                    });
+
+                    // --- Draw Lines ---
+                    const lineWidth = 2; // Adjust thickness
+                    const lineColor = 'magenta'; // Adjust color
+
+                    targetCtx.strokeStyle = lineColor;
+                    targetCtx.lineWidth = lineWidth;
+                    targetCtx.beginPath();
+                    targetCtx.moveTo(scaledPeaks[0].x, scaledPeaks[0].y); // Start at the first point
+                    // Draw lines to subsequent points
+                    for (let i = 1; i < scaledPeaks.length; i++) {
+                        targetCtx.lineTo(scaledPeaks[i].x, scaledPeaks[i].y);
+                    }
+                    targetCtx.closePath(); // Connect the last point back to the first
+                    targetCtx.stroke(); // Render the path outline
+                }
+
+                // Reset any changed context properties if needed elsewhere
+                targetCtx.fillStyle = 'black'; // Default fill
+                targetCtx.strokeStyle = 'black'; // Default stroke
+                targetCtx.lineWidth = 1;
+            }
+
              // Reset alpha
              targetCtx.globalAlpha = 1.0;
         }
 
 
-        // --- Alpha Slider (Refactored) ---
+        // --- Alpha Slider ---
         alphaSlider.addEventListener('input', async (event) => { // Added async
             const alpha = parseFloat(event.target.value);
             alphaValueSpan.textContent = alpha.toFixed(2); // Update displayed value
@@ -621,6 +697,31 @@
                  }
             }
         });
+
+        // --- Toggle Peaks Button ---
+        togglePeaksButton.addEventListener('click', async () => {
+            drawPeakOutlines = !drawPeakOutlines; // Toggle the state
+
+            // Update button text/style for visual feedback (optional but recommended)
+            if (drawPeakOutlines) {
+                togglePeaksButton.textContent = 'Hide Peaks';
+                togglePeaksButton.classList.replace('bg-green-600', 'bg-yellow-600');
+                togglePeaksButton.classList.replace('hover:bg-green-700', 'hover:bg-yellow-700');
+            } else {
+                togglePeaksButton.textContent = 'Show Peaks';
+                togglePeaksButton.classList.replace('bg-yellow-600', 'bg-green-600');
+                togglePeaksButton.classList.replace('hover:bg-yellow-700', 'hover:bg-green-700');
+            }
+
+            // Redraw the output canvas if a prediction exists
+            const source = isCameraMode ? videoElement : loadedImage;
+            if (source && lastPredictionTensor && !isPredicting) {
+                setMessage('Toggling peaks display...'); // Provide feedback
+                await drawCombined(source, lastPredictionTensor, parseFloat(alphaSlider.value), outputCombinedCanvas);
+                setMessage(''); // Clear feedback
+            }
+        });
+
 
 
         // Clears only the output visualization canvases
@@ -653,6 +754,11 @@
             alphaValueSpan.textContent = "0.7";
             imageInput.disabled = !model; // Disable file input if model not loaded
             imageInput.value = ''; // Clear file input selection
+
+            // Reset toggle button text
+            togglePeaksButton.textContent = 'Show Peaks'; // Add this line
+            togglePeaksButton.classList.remove('bg-yellow-600', 'hover:bg-yellow-700'); // Ensure correct initial color
+            togglePeaksButton.classList.add('bg-green-600', 'hover:bg-green-700'); // Ensure correct initial color
 
              // Reset camera button states appropriately
             if (model) { startCameraButton.disabled = false; }
