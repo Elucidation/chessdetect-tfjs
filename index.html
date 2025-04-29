@@ -136,6 +136,7 @@
         let loadedImage = null;
         let model = null;
         let lastPredictionTensor = null; // Store the last tensor for alpha adjustments
+        let lastPeaks = null; // Store the last peak positions
         let isPredicting = false;
         let isCameraMode = false;
         let isCameraRunning = false;
@@ -430,28 +431,6 @@
             }
         }
 
-        // --- Function to Find Heatmap Peaks ---
-        async function findHeatmapPeaks(predictionTensor) {
-            if (!predictionTensor) return null;
-            const [predHeight, predWidth, _] = predictionTensor.shape;
-            const peaks = [];
-            for (let i = 1; i <= 4; i++) { // Channels 1-4 for heatmaps
-                const peakCoords = tf.tidy(() => {
-                    // Get flattened 1d array argmax for each keypoint heatmap channel
-                    const heatmap = predictionTensor.slice([0, 0, i], [predHeight, predWidth, 1]).as1D();
-                    const flatIndex = heatmap.argMax();
-                    const flatIndexVal = flatIndex.dataSync()[0];
-                    // ravel back to x,y coordinates
-                    const y = Math.floor(flatIndexVal / predWidth);
-                    const x = flatIndexVal % predWidth;
-                    return { x, y };
-                });
-                peaks.push(peakCoords);
-            }
-            return peaks;
-        }
-
-
         // --- Real-time Prediction Loop (Camera Mode) ---
         async function predictLoop() {
             if (!isCameraRunning || !model) { // Stop loop if camera off or model gone
@@ -566,7 +545,7 @@
             ], [4, 3], 'float32');
 
             // --- Generate Combined Visualization Tensor ---
-            const finalDrawTensor = tf.tidy(() => {
+            const [finalDrawTensor, finalFlatPeakTensor] = tf.tidy(() => {
                 // Calculate desired display alphas
                 const segDisplayAlpha = Math.min(1.0, alpha + 0.2);
 
@@ -576,8 +555,8 @@
                 const segRgb = tf.concat([segChannelScaled, segChannelScaled, segChannelScaled], 2); // Shape [H, W, 3]
 
                 // --- Heatmap (Channels 1-4) ---
-                const heatmapChannels = tf.slice(predictionTensor, [0, 0, 1], [predHeight, predWidth, 4]);
-                const heatmapChannelsReshaped = heatmapChannels.reshape([predHeight * predWidth, 4]);
+                const heatmapChannels = tf.slice(predictionTensor, [0, 0, 1], [predHeight, predWidth, 4]); // Shape: [H, W, 4]
+                const heatmapChannelsReshaped = heatmapChannels.reshape([predHeight * predWidth, 4]); // Shape: [H*W, 4]
                 const heatmapCombined = tf.matMul(heatmapChannelsReshaped, heatmapColorsTensor);
                 const heatmapRgb = heatmapCombined.reshape([predHeight, predWidth, 3]); // Shape [H, W, 3]
 
@@ -594,18 +573,34 @@
                 // Clip final values and convert to Int32 for toPixels
                 const finalInt = blendedRgb.clipByValue(0, 255).toInt();
 
-                // TODO: Draw overlay points and lines on image
-                // findHeatmapPeaks()
+                // Get heatmap peaks - Find the argmax for each channel (axis=0) or zeros if disabled
+                const flatIndices = drawPeakOutlines ? heatmapChannelsReshaped.argMax(0) : tf.tensor([0,0,0,0]);
 
-                return finalInt; // Shape [H, W, 3]
-             });
+                return [finalInt, flatIndices]; // Shape finalInt = [H, W, 3], peaks = [4] of flattened argmax heatmap peaks if enabled, else zeros
+            });
+            
+            const results = await Promise.all([
+                tf.browser.draw(finalDrawTensor, tempCombinedCanvas), // Draw Tensor to Canvas (~0.5ms)
+                finalFlatPeakTensor.dataSync(), // TODO: This step costs ~20-30ms for some reason, optimize this
+            ]);
+            
 
-             // --- Draw SINGLE Tensor to Temporary Canvas ---
-             await tf.browser.draw(finalDrawTensor, tempCombinedCanvas);
+            // --- Calculate Heatmap Peaks before disposing tensor ---
+            let heatmapPeaks = null;
+            if (drawPeakOutlines) {
+               // Map flat indices to {x, y} coordinates
+               heatmapPeaks = Array.from(results[1]).map(flatIndexVal => {
+                   const y = Math.floor(flatIndexVal / predWidth);
+                   const x = flatIndexVal % predWidth;
+                   return { x, y };
+               });
+            }
+
 
              // --- Dispose intermediate tensors ---
              finalDrawTensor.dispose();
              heatmapColorsTensor.dispose();
+             finalFlatPeakTensor.dispose();
 
              // --- Draw Base Image ---
              targetCtx.clearRect(0, 0, targetWidth, targetHeight);
@@ -626,11 +621,7 @@
              targetCtx.globalAlpha = alpha; // Draw the pre-blended overlay fully opaque
              targetCtx.drawImage(tempCombinedCanvas, 0, 0, predWidth, predHeight, 0, 0, targetWidth, targetHeight); // Scale prediction canvas to target size
 
-            if (drawPeakOutlines) {
-                // --- Find Heatmap Peaks ---
-                // Note: findHeatmapPeaks handles its own tf.tidy internally
-                const heatmapPeaks = await findHeatmapPeaks(predictionTensor); // Get array of {x, y}
-
+            if (drawPeakOutlines && heatmapPeaks) {
                 // --- Scale Coordinates and Draw Points/Lines ---
                 if (heatmapPeaks && heatmapPeaks.length === 4) {
                     const scaleX = targetWidth / predWidth;
