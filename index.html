@@ -581,7 +581,7 @@
             
             const results = await Promise.all([
                 tf.browser.draw(finalDrawTensor, tempCombinedCanvas), // Draw Tensor to Canvas (~0.5ms)
-                finalFlatPeakTensor.dataSync(), // TODO: This step costs ~20-30ms for some reason, optimize this
+                finalFlatPeakTensor.data(), // TODO: This step costs ~20-30ms for some reason, optimize this
             ]);
             
 
