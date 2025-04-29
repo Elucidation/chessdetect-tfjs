@@ -27,7 +27,7 @@
         /* Hide/Show */
         .hidden { display: none; }
         /* Style video element - keep size for JS but hide */
-        #videoFeed { width: 256px; height: 256px; object-fit: cover; }
+        #videoFeed { width: 512px; height: 512px; object-fit: cover; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-indigo-100 via-purple-100 to-pink-100 flex items-center justify-center min-h-screen p-4">
@@ -64,7 +64,7 @@
                  <button id="stopCameraButton" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-5 rounded-md shadow-md text-sm disabled:opacity-50" disabled>Stop Camera</button>
                  <button id="switchCameraButton" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-5 rounded-md shadow-md text-sm disabled:opacity-50" disabled>Switch Camera</button>
              </div>
-             <video id="videoFeed" width="256" height="256" playsinline muted class="mt-4 hidden"></video>
+             <video id="videoFeed" width="512" height="512" playsinline muted class="mt-4 hidden"></video>
              <p id="camErrorMsg" class="text-red-600 text-xs mt-2"></p>
         </div>
 
@@ -78,11 +78,11 @@
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div id="inputCanvasContainer" class="canvas-container">
-                <canvas id="inputCanvas" width="256" height="256"></canvas>
+                <canvas id="inputCanvas" width="512" height="512"></canvas>
                 <label id="inputCanvasLabel" for="inputCanvas">Input</label>
             </div>
             <div class="canvas-container">
-                <canvas id="outputCombined" width="256" height="256"></canvas>
+                <canvas id="outputCombined" width="512" height="512"></canvas>
                 <label for="outputCombined">Combined Overlay</label>
             </div>
         </div>
@@ -93,7 +93,7 @@
                 <br>
                 <a href="https://youtu.be/BVt12vzp_iM?si=TGQFCpzhNeoPmxRp" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800 underline">Video Explanation</a>
                 <br>
-                v1.05
+                v1.06
             </p>
         </div>
     </div>
@@ -129,7 +129,7 @@
         // --- Config ---
         const MODEL_URL = './tfjs_model_quantu8/model.json';
         const TARGET_IMG_SIZE = 128; // Model's expected input size
-        const TARGET_FPS = 24;
+        const TARGET_FPS = 60;
         const MS_PER_FRAME = 1000 / TARGET_FPS;
 
         // --- State ---
