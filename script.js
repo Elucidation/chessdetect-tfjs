@@ -550,7 +550,66 @@ function preprocessSource(sourceElement, targetSize) {
   });
 }
 
-// --- Visualization Function ---
+// --- Visualization Functions ---
+/**
+ * Calculates peak locations from heatmap channels and draws markers onto an image tensor.
+ *
+ * @param {tf.Tensor} imageTensor - The base image tensor (Int32, Shape: [H, W, 3]) to draw on.
+ * @param {tf.Tensor} heatmapChannelsReshaped - Heatmap prediction tensor reshaped (Float32, Shape: [H*W, 4]).
+ * @param {tf.Tensor} peakMarkerColor - Color tensor for the markers (Int32, Shape: [1, 3]).
+ * @param {number} predHeight - The height of the prediction tensor.
+ * @param {number} predWidth - The width of the prediction tensor.
+ * @returns {tf.Tensor} A new tensor with peak markers drawn, same shape and type as imageTensor.
+ *                     Remember to dispose the input imageTensor if it's no longer needed after calling this.
+ */
+function applyPeakMarkers(
+  imageTensor,
+  heatmapChannelsReshaped,
+  peakMarkerColor,
+  predHeight,
+  predWidth
+) {
+  return tf.tidy(() => {
+    // Tidy up intermediate tensors created within this function
+    // Get heatmap peaks - Find the argmax for each channel (axis=0)
+    const flatIndices = heatmapChannelsReshaped.argMax(0); // Shape [4]
+
+    // Convert flat indices to [y, x] coordinates on GPU
+    const yCoords = tf.floor(flatIndices.div(predWidth)).cast("int32"); // Shape [4]
+    const xCoords = flatIndices.mod(predWidth).cast("int32"); // Shape [4]
+    const xyCoords = tf.stack([yCoords, xCoords], 1); // Shape [4, 2] ~[[y,x],...] peaks
+
+    // Define offsets for the sprite shape (5x5 hollow square)
+    // prettier-ignore
+    const spriteOffsets = tf.tensor2d(
+        [[-2, -2],[-2, -1],[-2, 0],[-2, 1],[-2, 2],[-1, -2],[-1, 2],[0, -2],
+         [0, 2],[1, -2],[1, 2],[2, -2],[2, -1],[2, 0],[2, 1],[2, 2]], [16, 2], "int32");
+
+    // Calculate all coordinates for the sprites using broadcasting
+    // xyCoords [4, 1, 2] + spriteOffsets [1, 16, 2] -> allCoords [4, 16, 2]
+    const allCoords = xyCoords.expandDims(1).add(spriteOffsets.expandDims(0));
+    const allCoordsFlat = allCoords.reshape([-1, 2]); // Shape [4 * 16, 2] = [64, 2]
+
+    // Clip coordinates to stay within bounds [0, H-1] and [0, W-1]
+    const clippedCoords = tf.tidy(() => {
+      const yClamped = allCoordsFlat
+        .slice([0, 0], [-1, 1])
+        .clipByValue(0, predHeight - 1);
+      const xClamped = allCoordsFlat
+        .slice([0, 1], [-1, 1])
+        .clipByValue(0, predWidth - 1);
+      return tf.concat([yClamped, xClamped], 1); // Shape [64, 2]
+    });
+
+    // Tile the color for each point in the sprites
+    const numPoints = allCoordsFlat.shape[0]; // 64 points total (4 peaks * 16 points/sprite)
+    const peakUpdates = tf.tile(peakMarkerColor, [numPoints, 1]); // Shape [64, 3]
+
+    // Splat markers onto the image tensor and keep the result
+    return tf.tensorScatterUpdate(imageTensor, clippedCoords, peakUpdates);
+  });
+}
+
 async function drawCombined(
   baseSourceElement,
   predictionTensor,
@@ -637,44 +696,19 @@ async function drawCombined(
     // Adjust blending logic here if needed (e.g., screen, multiply)
     const blendedRgb = segWeighted.add(heatWeighted);
 
-    // Clip final values and convert to Int32 for toPixels
-    const finalInt = blendedRgb.clipByValue(0, 255).toInt();
+    // Clip blended values and convert to Int32 for drawing or further modification
+    let finalInt = blendedRgb.clipByValue(0, 255).toInt();
 
     if (drawPeakOutlines) {
-      // Get heatmap peaks - Find the argmax for each channel (axis=0)
-      const flatIndices = heatmapChannelsReshaped.argMax(0);
-      // Convert flat indices to [y, x] coordinates on GPU
-      const yCoords = tf.floor(flatIndices.div(TARGET_IMG_SIZE)).cast("int32"); // Shape [4] ~ y = Math.floor(flat / 128)
-      const xCoords = flatIndices.mod(TARGET_IMG_SIZE).cast("int32"); // Shape [4] ~ x = flat % 128
-      const xyCoords = tf.stack([yCoords, xCoords], 1); // Shape [4, 2] ~[[y,x],...] peaks
-
-      // Define offsets for the sprite shape used for peaks, a 5x5 hollow square in this case
-      // prettier-ignore
-      const spriteOffsets = tf.tensor2d(
-        [[-2, -2],[-2, -1],[-2, 0],[-2, 1],[-2, 2],[-1, -2],[-1, 2],[0, -2],
-        [0, 2],[1, -2],[1, 2],[2, -2],[2, -1],[2, 0],[2, 1],[2, 2]], [16, 2], "int32");
-
-      // Calculate all coordinates for the sprites using broadcasting
-      const allCoords = xyCoords.expandDims(1).add(spriteOffsets.expandDims(0));
-      const allCoordsFlat = allCoords.reshape([-1, 2]);
-
-      // Clip coordinates to stay within bounds [0, H-1] and [0, W-1]
-      const clippedCoords = tf.tidy(() => {
-        // Tidy intermediate clipping tensors
-        const yClamped = allCoordsFlat
-          .slice([0, 0], [-1, 1])
-          .clipByValue(0, predHeight - 1);
-        const xClamped = allCoordsFlat
-          .slice([0, 1], [-1, 1])
-          .clipByValue(0, predWidth - 1);
-        return tf.concat([yClamped, xClamped], 1);
-      });
-
-      // Tile the color for each of the 20 points (4 peaks * 5 points/cross)
-      const peakUpdates = tf.tile(peakMarkerColor, [allCoordsFlat.shape[0], 1]); // Shape [20, 3]
-
-      // Splat crosses on image tensor and return
-      return tf.tensorScatterUpdate(finalInt, clippedCoords, peakUpdates); // Shape [36, 3]
+      const finalIntWithPeaks = applyPeakMarkers(
+        finalInt,
+        heatmapChannelsReshaped,
+        peakMarkerColor,
+        predHeight,
+        predWidth
+      );
+      finalInt.dispose(); // Dispose the tensor without peaks
+      finalInt = finalIntWithPeaks; // Assign the new tensor with peaks
     }
 
     return finalInt; // Shape finalInt = [H, W, 3]
