@@ -649,28 +649,10 @@ async function drawCombined(
       const xyCoords = tf.stack([yCoords, xCoords], 1); // Shape [4, 2] ~[[y,x],...] peaks
 
       // Define offsets for the sprite shape used for peaks, a 5x5 hollow square in this case
+      // prettier-ignore
       const spriteOffsets = tf.tensor2d(
-        [
-          [-2, -2],
-          [-2, -1],
-          [-2, 0],
-          [-2, 1],
-          [-2, 2],
-          [-1, -2],
-          [-1, 2],
-          [0, -2],
-          [0, 2],
-          [1, -2],
-          [1, 2],
-          [2, -2],
-          [2, -1],
-          [2, 0],
-          [2, 1],
-          [2, 2],
-        ],
-        [16, 2],
-        "int32"
-      );
+        [[-2, -2],[-2, -1],[-2, 0],[-2, 1],[-2, 2],[-1, -2],[-1, 2],[0, -2],
+        [0, 2],[1, -2],[1, 2],[2, -2],[2, -1],[2, 0],[2, 1],[2, 2]], [16, 2], "int32");
 
       // Calculate all coordinates for the sprites using broadcasting
       const allCoords = xyCoords.expandDims(1).add(spriteOffsets.expandDims(0));
