@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,51 +12,75 @@
 
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="bg-gradient-to-br from-indigo-100 via-purple-100 to-pink-100 flex items-center justify-center min-h-screen p-4">
+
+<body
+    class="bg-gradient-to-br from-indigo-100 via-purple-100 to-pink-100 flex items-center justify-center min-h-screen p-4">
 
     <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-4xl text-gray-800">
         <h1 class="text-2xl sm:text-3xl font-bold text-indigo-700 mb-6 text-center">Chessboard Finder</h1>
 
         <div class="text-center mb-4">
-            <button id="modeFileButton" class="bg-purple-600 text-white font-semibold py-1 px-3 rounded-l-md text-xs focus:outline-none ring-2 ring-purple-600 z-10 relative">File Upload</button><button id="modeCameraButton" class="bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-r-md text-xs focus:outline-none relative">Use Camera</button>
+            <button id="modeFileButton"
+                class="bg-purple-600 text-white font-semibold py-1 px-3 rounded-l-md text-xs focus:outline-none ring-2 ring-purple-600 z-10 relative">File
+                Upload</button><button id="modeCameraButton"
+                class="bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-r-md text-xs focus:outline-none relative">Use
+                Camera</button>
         </div>
 
         <div id="fileInputSection" class="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4 items-center px-4">
-             <div class="text-center md:text-left">
-                <label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wider">Model Status</label>
-                <div id="modelStatus" class="text-sm text-indigo-700 p-2 border border-indigo-300 rounded-md bg-indigo-50 h-[40px] flex items-center justify-center md:justify-start">Loading...</div>
+            <div class="text-center md:text-left">
+                <label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wider">Model
+                    Status</label>
+                <div id="modelStatus"
+                    class="text-sm text-indigo-700 p-2 border border-indigo-300 rounded-md bg-indigo-50 h-[40px] flex items-center justify-center md:justify-start">
+                    Loading...</div>
             </div>
             <div class="text-center md:text-left">
-                <label for="imageInput" class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wider">Upload Image</label>
+                <label for="imageInput"
+                    class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wider">Upload Image</label>
                 <input type="file" id="imageInput" accept="image/*" class="block w-full text-sm text-gray-700 border border-gray-400 rounded-md cursor-pointer
                     file:mr-3 file:py-2 file:px-4 file:border-0 file:text-sm file:font-semibold
                     file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 file:cursor-pointer" disabled>
             </div>
             <div class="flex justify-center mt-4 md:mt-0 md:justify-end items-center h-full">
-                 <button id="predictButton" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-5 rounded-md shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 text-sm disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                <button id="predictButton"
+                    class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-5 rounded-md shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled>
                     Predict Manually
-                 </button>
+                </button>
             </div>
         </div>
 
         <div id="cameraInputSection" class="hidden mb-6 flex flex-col items-center px-4">
-             <label class="block text-xs font-medium text-gray-600 mb-2 uppercase tracking-wider">Camera Controls</label>
-             <div class="flex flex-wrap justify-center gap-4">
-                 <button id="startCameraButton" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-5 rounded-md shadow-md text-sm disabled:opacity-50">Start Camera</button>
-                 <button id="stopCameraButton" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-5 rounded-md shadow-md text-sm disabled:opacity-50" disabled>Stop Camera</button>
-                 <button id="switchCameraButton" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-5 rounded-md shadow-md text-sm disabled:opacity-50" disabled>Switch Camera</button>
-             </div>
-             <video id="videoFeed" width="512" height="512" playsinline muted class="mt-4 hidden"></video>
-             <p id="camErrorMsg" class="text-red-600 text-xs mt-2"></p>
+            <label class="block text-xs font-medium text-gray-600 mb-2 uppercase tracking-wider">Camera Controls</label>
+            <div class="flex flex-wrap justify-center gap-4">
+                <button id="startCameraButton"
+                    class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-5 rounded-md shadow-md text-sm disabled:opacity-50">Start
+                    Camera</button>
+                <button id="stopCameraButton"
+                    class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-5 rounded-md shadow-md text-sm disabled:opacity-50"
+                    disabled>Stop Camera</button>
+                <button id="switchCameraButton"
+                    class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-5 rounded-md shadow-md text-sm disabled:opacity-50"
+                    disabled>Switch Camera</button>
+            </div>
+            <video id="videoFeed" width="512" height="512" playsinline muted class="mt-4 hidden"></video>
+            <p id="camErrorMsg" class="text-red-600 text-xs mt-2"></p>
         </div>
 
-         <div class="mb-4 flex flex-col items-center border-t border-b border-indigo-200 py-3">
-             <label for="alphaSlider" class="block text-xs font-medium text-gray-600 mb-2 uppercase tracking-wider">Overlay Alpha: <span id="alphaValue" class="font-bold text-indigo-600">0.40</span></label>
-             <input type="range" id="alphaSlider" min="0" max="1" step="0.05" value="0.7" class="w-full max-w-md">
-             <button id="togglePeaks" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-5 rounded-md shadow-md text-sm disabled:opacity-50">Toggle Peaks</button>
+        <div class="mb-4 flex flex-col items-center border-t border-b border-indigo-200 py-3">
+            <label for="alphaSlider"
+                class="block text-xs font-medium text-gray-600 mb-2 uppercase tracking-wider">Overlay Alpha: <span
+                    id="alphaValue" class="font-bold text-indigo-600">0.40</span></label>
+            <input type="range" id="alphaSlider" min="0" max="1" step="0.05" value="0.7" class="w-full max-w-md">
+            <button id="togglePeaks"
+                class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-5 rounded-md shadow-md text-sm disabled:opacity-50">Toggle
+                Peaks</button>
         </div>
 
-        <div class="text-center text-gray-600 text-xs mb-4 h-4">Live FPS: <span id="fpsDisplay">-</span><div id="messageArea" class="text-center text-purple-700 text-xs mb-4 h-4"></div></div>
+        <div class="text-center text-gray-600 text-xs mb-4 h-4">Live FPS: <span id="fpsDisplay">-</span>
+            <div id="messageArea" class="text-center text-purple-700 text-xs mb-4 h-4"></div>
+        </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div id="inputCanvasContainer" class="canvas-container">
@@ -70,9 +95,11 @@
 
         <div class="mt-8 pt-4 border-t border-indigo-200 text-center">
             <p class="text-xs text-gray-500">
-                <a href="https://github.com/Elucidation/chessdetect-tfjs" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800 underline">Source Code on GitHub</a>
+                <a href="https://github.com/Elucidation/chessdetect-tfjs" target="_blank" rel="noopener noreferrer"
+                    class="text-indigo-600 hover:text-indigo-800 underline">Source Code on GitHub</a>
                 <br>
-                <a href="https://youtu.be/BVt12vzp_iM?si=TGQFCpzhNeoPmxRp" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800 underline">Video Explanation</a>
+                <a href="https://youtu.be/BVt12vzp_iM?si=TGQFCpzhNeoPmxRp" target="_blank" rel="noopener noreferrer"
+                    class="text-indigo-600 hover:text-indigo-800 underline">Video Explanation</a>
                 <br>
                 v1.06
             </p>
@@ -143,7 +170,7 @@
         modeFileButton.addEventListener('click', () => switchMode('file'));
         modeCameraButton.addEventListener('click', () => switchMode('camera'));
         function switchMode(mode) {
-             if (mode === 'file') {
+            if (mode === 'file') {
                 isCameraMode = false; stopCamera(); // Stop camera if switching away
                 fileInputSection.classList.remove('hidden');
                 cameraInputSection.classList.add('hidden');
@@ -179,42 +206,42 @@
             } catch (err) { console.error("Error enumerating devices:", err); setCamError(`Error listing cameras: ${err.message}`); }
         }
         async function startCamera(deviceId = null) {
-             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { setCamError("getUserMedia() not supported (HTTPS required on mobile)."); return; }
-             if (!model) { setCamError("Model not loaded yet."); return; }
-             if (isCameraRunning) return;
-             setCamError(''); setMessage('Starting camera...'); startCameraButton.disabled = true; stopCameraButton.disabled = true; switchCameraButton.disabled = true;
-             let constraints = { video: {} };
-             if (deviceId) { constraints.video.deviceId = { exact: deviceId }; console.log("Attempting camera with deviceId:", deviceId); }
-             else { constraints.video.facingMode = 'environment'; console.log("Attempting camera with facingMode: environment"); }
-             try {
-                 let stream = null;
-                 try { stream = await navigator.mediaDevices.getUserMedia(constraints); }
-                 catch (err) {
-                      console.warn(`Failed getting camera with constraints: ${JSON.stringify(constraints)}. Error: ${err.name}`);
-                      if (deviceId || constraints.video.facingMode === 'environment') {
-                           console.log("Falling back to facingMode: user"); constraints.video = { facingMode: 'user' };
-                           try { stream = await navigator.mediaDevices.getUserMedia(constraints); }
-                           catch (err2) { console.warn(`Failed getting user camera. Falling back to any video.`); constraints.video = true; stream = await navigator.mediaDevices.getUserMedia(constraints); }
-                      } else { throw err; }
-                 }
-                 videoStream = stream; videoElement.srcObject = videoStream;
-                 const currentTrack = videoStream.getVideoTracks()[0];
-                 if (currentTrack) { currentDeviceId = currentTrack.getSettings().deviceId; console.log("Using deviceId:", currentDeviceId); }
-                 videoElement.onloadedmetadata = () => {
-                     videoElement.play().then(async () => {
-                         console.log("Video playback started."); isCameraRunning = true; stopCameraButton.disabled = false;
-                         if (!devicesEnumerated) { await getCameraDevices(); }
-                         else { switchCameraButton.disabled = !(videoDevices.length > 1 && isCameraRunning); } // Update button state
-                         setMessage('Camera running. Starting predictions...');
-                         lastPredictTime = performance.now(); frameCount = 0; lastFpsUpdate = lastPredictTime;
-                         predictLoop(); // Start the prediction loop
-                     }).catch(err => { console.error("Video play() failed:", err); setCamError(`Autoplay failed: ${err.message}.`); stopCameraButton.disabled = false; });
-                 };
-                  videoElement.onerror = (e) => { console.error("Video Element Error:", e); setCamError("Error playing video stream."); stopCamera(); }
-             } catch (err) {
-                 console.error("Error accessing camera:", err); setCamError(`Error accessing camera: ${err.name}`); setMessage('');
-                 startCameraButton.disabled = !model; stopCameraButton.disabled = true; switchCameraButton.disabled = true;
-             }
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { setCamError("getUserMedia() not supported (HTTPS required on mobile)."); return; }
+            if (!model) { setCamError("Model not loaded yet."); return; }
+            if (isCameraRunning) return;
+            setCamError(''); setMessage('Starting camera...'); startCameraButton.disabled = true; stopCameraButton.disabled = true; switchCameraButton.disabled = true;
+            let constraints = { video: {} };
+            if (deviceId) { constraints.video.deviceId = { exact: deviceId }; console.log("Attempting camera with deviceId:", deviceId); }
+            else { constraints.video.facingMode = 'environment'; console.log("Attempting camera with facingMode: environment"); }
+            try {
+                let stream = null;
+                try { stream = await navigator.mediaDevices.getUserMedia(constraints); }
+                catch (err) {
+                    console.warn(`Failed getting camera with constraints: ${JSON.stringify(constraints)}. Error: ${err.name}`);
+                    if (deviceId || constraints.video.facingMode === 'environment') {
+                        console.log("Falling back to facingMode: user"); constraints.video = { facingMode: 'user' };
+                        try { stream = await navigator.mediaDevices.getUserMedia(constraints); }
+                        catch (err2) { console.warn(`Failed getting user camera. Falling back to any video.`); constraints.video = true; stream = await navigator.mediaDevices.getUserMedia(constraints); }
+                    } else { throw err; }
+                }
+                videoStream = stream; videoElement.srcObject = videoStream;
+                const currentTrack = videoStream.getVideoTracks()[0];
+                if (currentTrack) { currentDeviceId = currentTrack.getSettings().deviceId; console.log("Using deviceId:", currentDeviceId); }
+                videoElement.onloadedmetadata = () => {
+                    videoElement.play().then(async () => {
+                        console.log("Video playback started."); isCameraRunning = true; stopCameraButton.disabled = false;
+                        if (!devicesEnumerated) { await getCameraDevices(); }
+                        else { switchCameraButton.disabled = !(videoDevices.length > 1 && isCameraRunning); } // Update button state
+                        setMessage('Camera running. Starting predictions...');
+                        lastPredictTime = performance.now(); frameCount = 0; lastFpsUpdate = lastPredictTime;
+                        predictLoop(); // Start the prediction loop
+                    }).catch(err => { console.error("Video play() failed:", err); setCamError(`Autoplay failed: ${err.message}.`); stopCameraButton.disabled = false; });
+                };
+                videoElement.onerror = (e) => { console.error("Video Element Error:", e); setCamError("Error playing video stream."); stopCamera(); }
+            } catch (err) {
+                console.error("Error accessing camera:", err); setCamError(`Error accessing camera: ${err.name}`); setMessage('');
+                startCameraButton.disabled = !model; stopCameraButton.disabled = true; switchCameraButton.disabled = true;
+            }
         }
         function stopCamera() {
             if (animationFrameId) { cancelAnimationFrame(animationFrameId); animationFrameId = null; }
@@ -240,7 +267,7 @@
 
         // --- Model Loading ---
         async function loadAppModel() {
-             setStatus('Loading model...', true); imageInput.disabled = true; predictButton.disabled = true; startCameraButton.disabled = true; switchCameraButton.disabled = true;
+            setStatus('Loading model...', true); imageInput.disabled = true; predictButton.disabled = true; startCameraButton.disabled = true; switchCameraButton.disabled = true;
             try {
                 await tf.setBackend('webgpu');
                 model = await tf.loadGraphModel(MODEL_URL);
@@ -275,8 +302,8 @@
                         drawInputImage(img); // Display the loaded image on the input canvas
                         clearOutputCanvases(); // Clear previous predictions
                         if (lastPredictionTensor) { // Dispose old tensor if a new image is loaded
-                             tf.dispose(lastPredictionTensor);
-                             lastPredictionTensor = null;
+                            tf.dispose(lastPredictionTensor);
+                            lastPredictionTensor = null;
                         }
                         if (model && !isPredicting) {
                             setMessage('Image loaded. Auto-predicting...');
@@ -320,12 +347,12 @@
 
         // --- Prediction Trigger (Manual Button - File Mode) ---
         predictButton.addEventListener('click', async () => {
-             if (isCameraMode || !loadedImage || !model) {
-                 displayError("Switch to File mode and load image first.");
-                 return;
-             }
-             if (isPredicting) return; // Don't predict if already predicting
-             await runPrediction();
+            if (isCameraMode || !loadedImage || !model) {
+                displayError("Switch to File mode and load image first.");
+                return;
+            }
+            if (isPredicting) return; // Don't predict if already predicting
+            await runPrediction();
         });
 
 
@@ -417,14 +444,14 @@
                 setMessage(model ? 'Camera stopped.' : 'Camera stopped, model unloaded.');
                 fpsDisplay.textContent = '-';
                 return;
-             }
+            }
 
-             const now = performance.now();
-             const elapsed = now - lastPredictTime;
+            const now = performance.now();
+            const elapsed = now - lastPredictTime;
 
-             // Update FPS counter approx every second
-             frameCount++;
-             if (now - lastFpsUpdate > 1000) {
+            // Update FPS counter approx every second
+            frameCount++;
+            if (now - lastFpsUpdate > 1000) {
                 const timeTakenMs = now - lastFpsUpdate; // Time in ms.
                 const perStepAvgMs = timeTakenMs / frameCount;
                 const fps = frameCount / (timeTakenMs / 1000);
@@ -432,73 +459,73 @@
                 fpsDisplay.textContent = fps.toFixed(1);
                 frameCount = 0;
                 lastFpsUpdate = now;
-             }
+            }
 
-             // Throttle predictions based on TARGET_FPS
-             if (elapsed > MS_PER_FRAME && !isPredicting) {
-                 lastPredictTime = now; // Update time *before* prediction starts
-                 // Ensure video frame is ready before trying to predict
-                 if (videoElement.readyState >= videoElement.HAVE_CURRENT_DATA) {
-                      setMessage(" "); // Clear previous messages in camera mode
-                      await runPrediction(videoElement); // Run prediction on the current video frame
-                 }
-             }
+            // Throttle predictions based on TARGET_FPS
+            if (elapsed > MS_PER_FRAME && !isPredicting) {
+                lastPredictTime = now; // Update time *before* prediction starts
+                // Ensure video frame is ready before trying to predict
+                if (videoElement.readyState >= videoElement.HAVE_CURRENT_DATA) {
+                    setMessage(" "); // Clear previous messages in camera mode
+                    await runPrediction(videoElement); // Run prediction on the current video frame
+                }
+            }
 
-             // Request the next frame
-             animationFrameId = requestAnimationFrame(predictLoop);
+            // Request the next frame
+            animationFrameId = requestAnimationFrame(predictLoop);
         }
 
 
         // --- Unified Preprocessing Function ---
         function preprocessSource(sourceElement, targetSize) {
-             return tf.tidy(() => {
-                 const srcWidth = sourceElement.videoWidth || sourceElement.width;
-                 const srcHeight = sourceElement.videoHeight || sourceElement.height;
+            return tf.tidy(() => {
+                const srcWidth = sourceElement.videoWidth || sourceElement.width;
+                const srcHeight = sourceElement.videoHeight || sourceElement.height;
 
-                 if (!srcWidth || !srcHeight) { throw new Error("Source element has invalid dimensions."); }
+                if (!srcWidth || !srcHeight) { throw new Error("Source element has invalid dimensions."); }
 
-                 // Create tensor from pixels
-                 let tensor = tf.browser.fromPixels(sourceElement).toFloat();
+                // Create tensor from pixels
+                let tensor = tf.browser.fromPixels(sourceElement).toFloat();
 
-                 // Calculate cropping to maintain aspect ratio for square target
-                 const aspectRatio = srcWidth / srcHeight;
-                 const targetAspectRatio = 1.0; // targetSize / targetSize
-                 let cropWidth = srcWidth; let cropHeight = srcHeight;
-                 if (aspectRatio > targetAspectRatio) { // Wider than target
-                     cropWidth = srcHeight * targetAspectRatio;
-                 } else { // Taller than target
-                     cropHeight = srcWidth / targetAspectRatio;
-                 }
-                 const offsetX = (srcWidth - cropWidth) / 2;
-                 const offsetY = (srcHeight - cropHeight) / 2;
+                // Calculate cropping to maintain aspect ratio for square target
+                const aspectRatio = srcWidth / srcHeight;
+                const targetAspectRatio = 1.0; // targetSize / targetSize
+                let cropWidth = srcWidth; let cropHeight = srcHeight;
+                if (aspectRatio > targetAspectRatio) { // Wider than target
+                    cropWidth = srcHeight * targetAspectRatio;
+                } else { // Taller than target
+                    cropHeight = srcWidth / targetAspectRatio;
+                }
+                const offsetX = (srcWidth - cropWidth) / 2;
+                const offsetY = (srcHeight - cropHeight) / 2;
 
-                 // Define the crop region relative to original dimensions [y1, x1, y2, x2]
-                 const cropBox = [[
+                // Define the crop region relative to original dimensions [y1, x1, y2, x2]
+                const cropBox = [[
                     offsetY / srcHeight,
                     offsetX / srcWidth,
                     (offsetY + cropHeight) / srcHeight,
                     (offsetX + cropWidth) / srcWidth
-                 ]];
+                ]];
 
-                 // Crop and resize using tf.image.cropAndResize
-                 // Input needs batch dimension, so expand dims
-                 const cropped = tf.image.cropAndResize(
-                     tensor.expandDims(0), // Add batch dim: [1, H, W, C]
-                     cropBox,              // Boxes normalized coordinates
-                     [0],                  // Box indices (only one box)
-                     [targetSize, targetSize] // Target output size [height, width]
-                 ); // Output shape: [1, targetSize, targetSize, 3]
+                // Crop and resize using tf.image.cropAndResize
+                // Input needs batch dimension, so expand dims
+                const cropped = tf.image.cropAndResize(
+                    tensor.expandDims(0), // Add batch dim: [1, H, W, C]
+                    cropBox,              // Boxes normalized coordinates
+                    [0],                  // Box indices (only one box)
+                    [targetSize, targetSize] // Target output size [height, width]
+                ); // Output shape: [1, targetSize, targetSize, 3]
 
-                 // Normalize to 0-1 range
-                 const normalized = cropped.div(tf.scalar(255.0));
+                // Normalize to 0-1 range
+                const normalized = cropped.div(tf.scalar(255.0));
 
-                 // Dispose the initial tensor from pixels
-                 tensor.dispose();
+                // Dispose the initial tensor from pixels
+                tensor.dispose();
 
-                 // Return the preprocessed tensor (still has batch dimension)
-                 // Shape: [1, targetSize, targetSize, 3]
-                 return normalized;
-             });
+                // Return the preprocessed tensor (still has batch dimension)
+                // Shape: [1, targetSize, targetSize, 3]
+                return normalized;
+            });
         }
 
 
@@ -565,10 +592,10 @@
                     // Define offsets for the sprite shape used for peaks, a 5x5 hollow square in this case
                     const spriteOffsets = tf.tensor2d([
                         [-2, -2], [-2, -1], [-2, 0], [-2, 1], [-2, 2],
-                        [-1, -2],                             [-1, 2],
-                        [ 0, -2],                             [ 0, 2],
-                        [ 1, -2],                             [ 1, 2],
-                        [ 2, -2], [ 2, -1], [ 2, 0], [ 2, 1], [ 2, 2]
+                        [-1, -2], [-1, 2],
+                        [0, -2], [0, 2],
+                        [1, -2], [1, 2],
+                        [2, -2], [2, -1], [2, 0], [2, 1], [2, 2]
                     ], [16, 2], 'int32');
 
                     // Calculate all coordinates for the sprites using broadcasting
@@ -584,44 +611,44 @@
 
                     // Tile the color for each of the 20 points (4 peaks * 5 points/cross)
                     const peakUpdates = tf.tile(peakMarkerColor, [allCoordsFlat.shape[0], 1]); // Shape [20, 3]
-                    
+
                     // Splat crosses on image tensor and return
                     return tf.tensorScatterUpdate(finalInt, clippedCoords, peakUpdates); // Shape [36, 3]
                 }
 
                 return finalInt; // Shape finalInt = [H, W, 3]
             });
-            
+
             // NOTE: Key webgpu optimization, tf.browser.draw avoids gpu->cpu->gpu data transfer for drawing
             // const a = performance.now();
             const results = await tf.browser.draw(finalDrawTensor, tempCombinedCanvas);
             // console.info(`Took ${(performance.now() - a).toFixed(2)} ms to await draw`);
 
-             // --- Dispose intermediate tensors ---
-             finalDrawTensor.dispose();
-             heatmapColorsTensor.dispose();
+            // --- Dispose intermediate tensors ---
+            finalDrawTensor.dispose();
+            heatmapColorsTensor.dispose();
 
-             // --- Draw Base Image ---
-             targetCtx.clearRect(0, 0, targetWidth, targetHeight);
-             targetCtx.imageSmoothingEnabled = true;
-             const baseWidth = baseSourceElement.videoWidth || baseSourceElement.width;
-             const baseHeight = baseSourceElement.videoHeight || baseSourceElement.height;
-             if (!baseWidth || !baseHeight) { console.warn("Base source has no dimensions."); return; }
-             const aspectRatio = baseWidth / baseHeight;
-             const targetAspectRatio = targetWidth / targetHeight;
-             let cropWidth = baseWidth; let cropHeight = baseHeight;
-             if (aspectRatio > targetAspectRatio) { cropWidth = baseHeight * targetAspectRatio; } else { cropHeight = baseWidth / targetAspectRatio; }
-             const offsetX = (baseWidth - cropWidth) / 2;
-             const offsetY = (baseHeight - cropHeight) / 2;
-             targetCtx.drawImage(baseSourceElement, offsetX, offsetY, cropWidth, cropHeight, 0, 0, targetWidth, targetHeight);
+            // --- Draw Base Image ---
+            targetCtx.clearRect(0, 0, targetWidth, targetHeight);
+            targetCtx.imageSmoothingEnabled = true;
+            const baseWidth = baseSourceElement.videoWidth || baseSourceElement.width;
+            const baseHeight = baseSourceElement.videoHeight || baseSourceElement.height;
+            if (!baseWidth || !baseHeight) { console.warn("Base source has no dimensions."); return; }
+            const aspectRatio = baseWidth / baseHeight;
+            const targetAspectRatio = targetWidth / targetHeight;
+            let cropWidth = baseWidth; let cropHeight = baseHeight;
+            if (aspectRatio > targetAspectRatio) { cropWidth = baseHeight * targetAspectRatio; } else { cropHeight = baseWidth / targetAspectRatio; }
+            const offsetX = (baseWidth - cropWidth) / 2;
+            const offsetY = (baseHeight - cropHeight) / 2;
+            targetCtx.drawImage(baseSourceElement, offsetX, offsetY, cropWidth, cropHeight, 0, 0, targetWidth, targetHeight);
 
-             // --- Draw SINGLE Overlay ---
-             targetCtx.imageSmoothingEnabled = false; // Disable smoothing for pixelated overlay
-             targetCtx.globalAlpha = alpha; // Draw the pre-blended overlay fully opaque
-             targetCtx.drawImage(tempCombinedCanvas, 0, 0, predWidth, predHeight, 0, 0, targetWidth, targetHeight); // Scale prediction canvas to target size
+            // --- Draw SINGLE Overlay ---
+            targetCtx.imageSmoothingEnabled = false; // Disable smoothing for pixelated overlay
+            targetCtx.globalAlpha = alpha; // Draw the pre-blended overlay fully opaque
+            targetCtx.drawImage(tempCombinedCanvas, 0, 0, predWidth, predHeight, 0, 0, targetWidth, targetHeight); // Scale prediction canvas to target size
 
-             // Reset alpha
-             targetCtx.globalAlpha = 1.0;
+            // Reset alpha
+            targetCtx.globalAlpha = 1.0;
         }
 
 
@@ -635,11 +662,11 @@
             // Use the stored tensor (lastPredictionTensor) to redraw immediately
             // This avoids re-running the model just for an alpha change
             if (source && lastPredictionTensor) {
-                 // Avoid drawing if a prediction is currently running (esp. in camera mode)
-                 // This prevents potential race conditions or drawing inconsistencies
-                 if (!isPredicting) {
+                // Avoid drawing if a prediction is currently running (esp. in camera mode)
+                // This prevents potential race conditions or drawing inconsistencies
+                if (!isPredicting) {
                     await drawCombined(source, lastPredictionTensor, alpha, outputCombinedCanvas);
-                 }
+                }
             }
         });
 
@@ -691,7 +718,7 @@
                 inputCtx.clearRect(0, 0, inputCanvas.width, inputCanvas.height);
                 inputCanvasContainer.classList.remove('hidden'); // Ensure input canvas is visible in file mode
             } else {
-                 inputCanvasContainer.classList.add('hidden'); // Ensure hidden in camera mode
+                inputCanvasContainer.classList.add('hidden'); // Ensure hidden in camera mode
             }
 
             setMessage(""); // Clear any messages
@@ -705,7 +732,7 @@
             togglePeaksButton.classList.remove('bg-yellow-600', 'hover:bg-yellow-700'); // Ensure correct initial color
             togglePeaksButton.classList.add('bg-green-600', 'hover:bg-green-700'); // Ensure correct initial color
 
-             // Reset camera button states appropriately
+            // Reset camera button states appropriately
             if (model) { startCameraButton.disabled = false; }
             stopCameraButton.disabled = true;
             switchCameraButton.disabled = true;
@@ -713,16 +740,16 @@
 
         // Display error message and reset state, disposing tensor
         function displayError(message) {
-             setMessage(message);
-             predictButton.disabled = true; // Disable predict on error
-             loadedImage = null;
-             // Dispose the stored prediction tensor on error
-             if (lastPredictionTensor) {
-                 tf.dispose(lastPredictionTensor);
-                 lastPredictionTensor = null;
-             }
-             console.error(message);
-             imageInput.disabled = !model; // Re-enable based on model status
+            setMessage(message);
+            predictButton.disabled = true; // Disable predict on error
+            loadedImage = null;
+            // Dispose the stored prediction tensor on error
+            if (lastPredictionTensor) {
+                tf.dispose(lastPredictionTensor);
+                lastPredictionTensor = null;
+            }
+            console.error(message);
+            imageInput.disabled = !model; // Re-enable based on model status
         }
 
         // --- Load Model & Init ---
@@ -732,4 +759,5 @@
     </script>
 
 </body>
+
 </html>
