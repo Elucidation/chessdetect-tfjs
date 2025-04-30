@@ -627,6 +627,7 @@
             // --- Dispose intermediate tensors ---
             finalDrawTensor.dispose();
             heatmapColorsTensor.dispose();
+            peakMarkerColor.dispose();
 
             // --- Draw Base Image ---
             targetCtx.clearRect(0, 0, targetWidth, targetHeight);
