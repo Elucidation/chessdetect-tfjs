@@ -2,7 +2,12 @@
 
 This is an HTML/JavaScript web application that runs a pre-trained U-Net++ segmentation/heatmap model directly in the browser using TensorFlow.js. The model runs locally on device, no server is used.
 
-It provides an interactive way to test and visualize the output of the chessboard segmentation + 4 corner heatmap U-Net++ model on different inputs from a website. [Live demo link](https://elucidation.github.io/chessdetect-tfjs/)
+![latest_224_model_heatmaps_result](https://github.com/user-attachments/assets/1a0deba5-a425-4eed-b715-cd5904497096)
+
+It provides an interactive way to test and visualize the output of the chessboard segmentation + 4 corner heatmap U-Net++ model on different inputs from a website.
+
+[**Try it out Live**](https://elucidation.github.io/chessdetect-tfjs/) or watch a video of it in use below:
+
 
 https://github.com/user-attachments/assets/f32c9319-21a1-4f7c-b17a-33c4baf608e5
 
@@ -17,6 +22,7 @@ https://github.com/user-attachments/assets/f32c9319-21a1-4f7c-b17a-33c4baf608e5
 * Supports switching between available cameras (e.g., front/back on mobile).
 * Displays the input (uploaded image or live camera feed) alongside a combined visualization showing the predicted segmentation mask and corner heatmaps overlaid on the input.
 * Includes a slider to control the transparency (alpha) of the segmentation/heatmap overlay.
+
 
 **Model**
 
