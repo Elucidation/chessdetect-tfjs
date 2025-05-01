@@ -16,13 +16,11 @@ const stopCameraButton = document.getElementById("stopCameraButton");
 const switchCameraButton = document.getElementById("switchCameraButton");
 const videoElement = document.getElementById("videoFeed");
 const camErrorMsg = document.getElementById("camErrorMsg");
-const inputCanvasContainer = document.getElementById("inputCanvasContainer");
 const inputCanvasLabel = document.getElementById("inputCanvasLabel");
 const togglePeaksButton = document.getElementById("togglePeaks");
 const fpsDisplay = document.getElementById("fpsDisplay");
 
 // Get 2D contexts
-const inputCtx = inputCanvas.getContext("2d");
 const outCombCtx = outputCombinedCanvas.getContext("2d"); // Still needed for drawing base image & overlays
 
 // --- Config ---
@@ -30,7 +28,7 @@ const outCombCtx = outputCombinedCanvas.getContext("2d"); // Still needed for dr
 // const TARGET_IMG_SIZE = 224; // Model's expected input size
 const MODEL_URL = "./tfjs_128_quantu8/model.json";
 const TARGET_IMG_SIZE = 128; // Model's expected input size
-const TARGET_FPS = 60;
+const TARGET_FPS = 30;
 const MS_PER_FRAME = 1000 / TARGET_FPS;
 
 // --- State ---
@@ -40,12 +38,12 @@ let lastPredictionTensor = null; // Store the last tensor for alpha adjustments
 let isPredicting = false;
 let isCameraMode = false;
 let isCameraRunning = false;
-let drawPeakOutlines = false;
+let drawPeakOutlines = true;
 let videoStream = null;
 let animationFrameId = null;
 let lastPredictTime = 0;
 let lastPredictOnlyTime = 0; // Only time for last predict
-let frameCount = 0;
+let predictFrameCount = 0; // Track Predict update count for predict FPS
 let lastFpsUpdate = 0;
 let videoDevices = [];
 let currentDeviceId = null;
@@ -75,7 +73,6 @@ function switchMode(mode) {
     stopCamera(); // Stop camera if switching away
     fileInputSection.classList.remove("hidden");
     cameraInputSection.classList.add("hidden");
-    inputCanvasContainer.classList.remove("hidden"); // Show input canvas
     modeFileButton.classList.replace("bg-gray-300", "bg-purple-600");
     modeFileButton.classList.replace("text-gray-700", "text-white");
     modeFileButton.classList.add("ring-2", "ring-purple-600", "z-10");
@@ -88,7 +85,6 @@ function switchMode(mode) {
     isCameraMode = true;
     fileInputSection.classList.add("hidden");
     cameraInputSection.classList.remove("hidden");
-    inputCanvasContainer.classList.add("hidden"); // Hide input canvas in camera mode
     modeCameraButton.classList.replace("bg-gray-300", "bg-purple-600");
     modeCameraButton.classList.replace("text-gray-700", "text-white");
     modeCameraButton.classList.add("ring-2", "ring-purple-600", "z-10");
@@ -191,7 +187,7 @@ async function startCamera(deviceId = null) {
           } // Update button state
           setMessage("Camera running. Starting predictions...");
           lastPredictTime = performance.now();
-          frameCount = 0;
+          predictFrameCount = 0;
           lastFpsUpdate = lastPredictTime;
           predictLoop(); // Start the prediction loop
         })
@@ -231,9 +227,6 @@ function stopCamera() {
   switchCameraButton.disabled = true;
   setMessage("Camera stopped.");
   clearOutputCanvases();
-  // Clear input canvas only if in file mode (though it's hidden in camera mode anyway)
-  if (!isCameraMode)
-    inputCtx.clearRect(0, 0, inputCanvas.width, inputCanvas.height);
   fpsDisplay.textContent = "-";
 }
 async function switchCamera() {
@@ -270,7 +263,7 @@ async function loadAppModel() {
     if (Array.isArray(warmupResult)) warmupResult.forEach((t) => t.dispose());
     else warmupResult.dispose();
     warmupTensor.dispose();
-    setStatus(`Ready: ${MODEL_URL.split('/')[1]}`);
+    setStatus(`Ready ${MODEL_URL.split('/')[1]}`);
     console.log(`Graph Model ${MODEL_URL} loaded.`);
     // Enable controls now that model is ready
     imageInput.disabled = false;
@@ -293,7 +286,6 @@ imageInput.addEventListener("change", async (event) => {
       const img = new Image();
       img.onload = async () => {
         loadedImage = img;
-        drawInputImage(img); // Display the loaded image on the input canvas
         clearOutputCanvases(); // Clear previous predictions
         if (lastPredictionTensor) {
           // Dispose old tensor if a new image is loaded
@@ -325,37 +317,6 @@ imageInput.addEventListener("change", async (event) => {
     resetUI();
   }
 });
-
-// Draws the loaded image onto the input canvas, preserving aspect ratio
-function drawInputImage(img) {
-  inputCtx.clearRect(0, 0, inputCanvas.width, inputCanvas.height);
-  const aspectRatio = img.width / img.height;
-  const targetAspectRatio = inputCanvas.width / inputCanvas.height; // Assuming square canvas
-  let cropWidth = img.width;
-  let cropHeight = img.height;
-  // Calculate cropping dimensions to fit the target aspect ratio
-  if (aspectRatio > targetAspectRatio) {
-    // Image is wider than target
-    cropWidth = img.height * targetAspectRatio;
-  } else {
-    // Image is taller than target
-    cropHeight = img.width / targetAspectRatio;
-  }
-  const offsetX = (img.width - cropWidth) / 2;
-  const offsetY = (img.height - cropHeight) / 2;
-  // Draw the cropped portion of the image onto the canvas
-  inputCtx.drawImage(
-    img,
-    offsetX,
-    offsetY,
-    cropWidth,
-    cropHeight,
-    0,
-    0,
-    inputCanvas.width,
-    inputCanvas.height
-  );
-}
 
 // --- Prediction Trigger (Manual Button - File Mode) ---
 predictButton.addEventListener("click", async () => {
@@ -398,15 +359,16 @@ async function runPrediction(sourceElement = null) {
 
     // Get output tensor or make it if in pieces
     // predictionResult expected to be either = [HxWx5] or [HxWx1, HxWx4] for segmentation/corners
-    if (!Array.isArray(predictionResult)) {
-      outputTensor = predictionResult;
-    }
-    else if (predictionResult.length == 1) {
-      outputTensor = predictionResult[0];
-    }
-    else {
-      outputTensor = tf.concat([predictionResult[0], predictionResult[1]], axis=3);
-    }
+    // if (!Array.isArray(predictionResult)) {
+    //   outputTensor = predictionResult;
+    // }
+    // else if (predictionResult.length == 1) {
+    //   outputTensor = predictionResult[0];
+    // }
+    // else {
+    //   outputTensor = tf.concat([predictionResult[0], predictionResult[1]], axis=3);
+    // }
+    outputTensor = predictionResult;
 
     // Squeeze the batch dimension if present (e.g., shape [1, H, W, C] -> [H, W, C])
     if (outputTensor.shape.length === 4 && outputTensor.shape[0] === 1) {
@@ -475,19 +437,20 @@ async function predictLoop() {
   const elapsed = now - lastPredictTime;
 
   // Update FPS counter approx every second
-  frameCount++;
+  
   if (now - lastFpsUpdate > 1000) {
     const timeTakenMs = now - lastFpsUpdate; // Time in ms.
-    const perStepAvgMs = timeTakenMs / frameCount;
-    const fps = frameCount / (timeTakenMs / 1000);
+    const perStepAvgMs = timeTakenMs / predictFrameCount;
+    const fps = predictFrameCount / (timeTakenMs / 1000);
     // fpsDisplay.textContent = `${fps.toFixed(1)} | ${perStepAvgMs.toFixed(1)}ms/step | ${lastPredictOnlyTime.toFixed(1)}ms/predict`;
     fpsDisplay.textContent = fps.toFixed(1);
-    frameCount = 0;
+    predictFrameCount = 0;
     lastFpsUpdate = now;
   }
 
   // Throttle predictions based on TARGET_FPS
   if (elapsed > MS_PER_FRAME && !isPredicting) {
+    predictFrameCount++;
     lastPredictTime = now; // Update time *before* prediction starts
     // Ensure video frame is ready before trying to predict
     if (videoElement.readyState >= videoElement.HAVE_CURRENT_DATA) {
@@ -814,19 +777,21 @@ togglePeaksButton.addEventListener("click", async () => {
 
   // Update button text/style for visual feedback (optional but recommended)
   if (drawPeakOutlines) {
-    togglePeaksButton.textContent = "Hide Peaks";
-    togglePeaksButton.classList.replace("bg-green-600", "bg-yellow-600");
-    togglePeaksButton.classList.replace(
-      "hover:bg-green-700",
-      "hover:bg-yellow-700"
-    );
-  } else {
-    togglePeaksButton.textContent = "Show Peaks";
+    togglePeaksButton.textContent = "Finding Corners";
     togglePeaksButton.classList.replace("bg-yellow-600", "bg-green-600");
     togglePeaksButton.classList.replace(
       "hover:bg-yellow-700",
       "hover:bg-green-700"
     );
+    
+  } else {
+    togglePeaksButton.textContent = "Hiding Corners";
+    togglePeaksButton.classList.replace("bg-green-600", "bg-yellow-600");
+    togglePeaksButton.classList.replace(
+      "hover:bg-green-700",
+      "hover:bg-yellow-700"
+    );
+    
   }
 
   // Redraw the output canvas if a prediction exists
@@ -866,12 +831,6 @@ function resetUI() {
 
   // Clear canvases based on mode
   clearOutputCanvases();
-  if (!isCameraMode) {
-    inputCtx.clearRect(0, 0, inputCanvas.width, inputCanvas.height);
-    inputCanvasContainer.classList.remove("hidden"); // Ensure input canvas is visible in file mode
-  } else {
-    inputCanvasContainer.classList.add("hidden"); // Ensure hidden in camera mode
-  }
 
   setMessage(""); // Clear any messages
   alphaSlider.value = 0.7; // Reset slider
@@ -880,9 +839,10 @@ function resetUI() {
   imageInput.value = ""; // Clear file input selection
 
   // Reset toggle button text
-  togglePeaksButton.textContent = "Show Peaks"; // Add this line
-  togglePeaksButton.classList.remove("bg-yellow-600", "hover:bg-yellow-700"); // Ensure correct initial color
+  togglePeaksButton.textContent = "Finding Corners";
   togglePeaksButton.classList.add("bg-green-600", "hover:bg-green-700"); // Ensure correct initial color
+  togglePeaksButton.classList.remove("bg-yellow-600", "hover:bg-yellow-700"); // Ensure correct initial color
+  
 
   // Reset camera button states appropriately
   if (model) {
