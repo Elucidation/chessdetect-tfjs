@@ -26,8 +26,8 @@ const inputCtx = inputCanvas.getContext("2d");
 const outCombCtx = outputCombinedCanvas.getContext("2d"); // Still needed for drawing base image & overlays
 
 // --- Config ---
-const MODEL_URL = "./tfjs_model_quantu8/model.json";
-const TARGET_IMG_SIZE = 128; // Model's expected input size
+const MODEL_URL = "./tfjs_224_quantu8/model.json";
+const TARGET_IMG_SIZE = 224; // Model's expected input size
 const TARGET_FPS = 60;
 const MS_PER_FRAME = 1000 / TARGET_FPS;
 
@@ -394,10 +394,17 @@ async function runPrediction(sourceElement = null) {
     // Run model prediction
     const predictionResult = tf.tidy(() => model.predict(inputTensor));
 
-    // Handle potential array output from model and get the primary tensor
-    outputTensor = Array.isArray(predictionResult)
-      ? predictionResult[0]
-      : predictionResult;
+    // Get output tensor or make it if in pieces
+    // predictionResult expected to be either = [HxWx5] or [HxWx1, HxWx4] for segmentation/corners
+    if (!Array.isArray(predictionResult)) {
+      outputTensor = predictionResult;
+    }
+    else if (predictionResult.length == 1) {
+      outputTensor = predictionResult[0];
+    }
+    else {
+      outputTensor = tf.concat([predictionResult[0], predictionResult[1]], axis=3);
+    }
 
     // Squeeze the batch dimension if present (e.g., shape [1, H, W, C] -> [H, W, C])
     if (outputTensor.shape.length === 4 && outputTensor.shape[0] === 1) {
