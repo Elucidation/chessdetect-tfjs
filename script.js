@@ -26,8 +26,10 @@ const inputCtx = inputCanvas.getContext("2d");
 const outCombCtx = outputCombinedCanvas.getContext("2d"); // Still needed for drawing base image & overlays
 
 // --- Config ---
-const MODEL_URL = "./tfjs_224_quantu8/model.json";
-const TARGET_IMG_SIZE = 224; // Model's expected input size
+// const MODEL_URL = "./tfjs_224_quantu8/model.json";
+// const TARGET_IMG_SIZE = 224; // Model's expected input size
+const MODEL_URL = "./tfjs_128_quantu8/model.json";
+const TARGET_IMG_SIZE = 128; // Model's expected input size
 const TARGET_FPS = 60;
 const MS_PER_FRAME = 1000 / TARGET_FPS;
 
@@ -268,7 +270,7 @@ async function loadAppModel() {
     if (Array.isArray(warmupResult)) warmupResult.forEach((t) => t.dispose());
     else warmupResult.dispose();
     warmupTensor.dispose();
-    setStatus("Model Ready");
+    setStatus(`Ready: ${MODEL_URL.split('/')[1]}`);
     console.log(`Graph Model ${MODEL_URL} loaded.`);
     // Enable controls now that model is ready
     imageInput.disabled = false;
