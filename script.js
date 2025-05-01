@@ -359,16 +359,15 @@ async function runPrediction(sourceElement = null) {
 
     // Get output tensor or make it if in pieces
     // predictionResult expected to be either = [HxWx5] or [HxWx1, HxWx4] for segmentation/corners
-    // if (!Array.isArray(predictionResult)) {
-    //   outputTensor = predictionResult;
-    // }
-    // else if (predictionResult.length == 1) {
-    //   outputTensor = predictionResult[0];
-    // }
-    // else {
-    //   outputTensor = tf.concat([predictionResult[0], predictionResult[1]], axis=3);
-    // }
-    outputTensor = predictionResult;
+    if (!Array.isArray(predictionResult)) {
+      outputTensor = predictionResult;
+    }
+    else if (predictionResult.length == 1) {
+      outputTensor = predictionResult[0];
+    }
+    else {
+      outputTensor = tf.concat([predictionResult[0], predictionResult[1]], axis=3);
+    }
 
     // Squeeze the batch dimension if present (e.g., shape [1, H, W, C] -> [H, W, C])
     if (outputTensor.shape.length === 4 && outputTensor.shape[0] === 1) {
