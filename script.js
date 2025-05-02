@@ -24,11 +24,11 @@ const fpsDisplay = document.getElementById("fpsDisplay");
 const outCombCtx = outputCombinedCanvas.getContext("2d"); // Still needed for drawing base image & overlays
 
 // --- Config ---
-// const MODEL_URL = "./tfjs_224_quantu8/model.json";
-// const TARGET_IMG_SIZE = 224; // Model's expected input size
-const MODEL_URL = "./tfjs_128_quantu8/model.json";
+// v1.11 Best, Unet++ with Attention Gates, 128x128 size, ~8.6 MB
+const MODEL_URL = "./m128_att_v3_q8/model.json";
 const TARGET_IMG_SIZE = 128; // Model's expected input size
-const TARGET_FPS = 30;
+
+const TARGET_FPS = 45; // Predict FPS, not draw FPS
 const MS_PER_FRAME = 1000 / TARGET_FPS;
 
 // --- State ---
