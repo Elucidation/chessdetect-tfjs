@@ -328,7 +328,7 @@ predictButton.addEventListener("click", async () => {
   await runPrediction();
 });
 
-// --- Core Prediction Logic (Refactored) ---
+// --- Core Prediction Logic ---
 async function runPrediction(sourceElement = null) {
   const currentSource = sourceElement || loadedImage;
   if (!currentSource || !model || isPredicting) {
@@ -436,7 +436,6 @@ async function predictLoop() {
   const elapsed = now - lastPredictTime;
 
   // Update FPS counter approx every second
-  
   if (now - lastFpsUpdate > 1000) {
     const timeTakenMs = now - lastFpsUpdate; // Time in ms.
     const perStepAvgMs = timeTakenMs / predictFrameCount;
@@ -462,7 +461,7 @@ async function predictLoop() {
   animationFrameId = requestAnimationFrame(predictLoop);
 }
 
-// --- Unified Preprocessing Function ---
+// --- Preprocessing ---
 function preprocessSource(sourceElement, targetSize) {
   return tf.tidy(() => {
     const srcWidth = sourceElement.videoWidth || sourceElement.width;
@@ -748,7 +747,6 @@ async function drawCombined(
 
 // --- Alpha Slider ---
 alphaSlider.addEventListener("input", async (event) => {
-  // Added async
   const alpha = parseFloat(event.target.value);
   alphaValueSpan.textContent = alpha.toFixed(2); // Update displayed value
 
@@ -772,25 +770,16 @@ alphaSlider.addEventListener("input", async (event) => {
 
 // --- Toggle Peaks Button ---
 togglePeaksButton.addEventListener("click", async () => {
-  drawPeakOutlines = !drawPeakOutlines; // Toggle the state
+  drawPeakOutlines = !drawPeakOutlines;
 
-  // Update button text/style for visual feedback (optional but recommended)
   if (drawPeakOutlines) {
     togglePeaksButton.textContent = "Finding Corners";
-    togglePeaksButton.classList.replace("bg-yellow-600", "bg-green-600");
-    togglePeaksButton.classList.replace(
-      "hover:bg-yellow-700",
-      "hover:bg-green-700"
-    );
-    
+    togglePeaksButton.classList.remove("toggle-peaks-inactive");
+    togglePeaksButton.classList.add("toggle-peaks-active");
   } else {
     togglePeaksButton.textContent = "Hiding Corners";
-    togglePeaksButton.classList.replace("bg-green-600", "bg-yellow-600");
-    togglePeaksButton.classList.replace(
-      "hover:bg-green-700",
-      "hover:bg-yellow-700"
-    );
-    
+    togglePeaksButton.classList.remove("toggle-peaks-active");
+    togglePeaksButton.classList.add("toggle-peaks-inactive");
   }
 
   // Redraw the output canvas if a prediction exists
@@ -839,9 +828,8 @@ function resetUI() {
 
   // Reset toggle button text
   togglePeaksButton.textContent = "Finding Corners";
-  togglePeaksButton.classList.add("bg-green-600", "hover:bg-green-700"); // Ensure correct initial color
-  togglePeaksButton.classList.remove("bg-yellow-600", "hover:bg-yellow-700"); // Ensure correct initial color
-  
+  togglePeaksButton.classList.remove("toggle-peaks-inactive");
+  togglePeaksButton.classList.add("toggle-peaks-active");
 
   // Reset camera button states appropriately
   if (model) {

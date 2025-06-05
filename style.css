@@ -122,3 +122,19 @@ input[type="range"]::-moz-range-thumb {
   height: 512px;
   object-fit: cover;
 }
+
+/* Toggle Peaks Button Styles */
+.toggle-peaks-active {
+  background-color: #38a169; /* bg-green-600 */
+  color: white;
+}
+.toggle-peaks-active:hover {
+  background-color: #2f855a; /* hover:bg-green-700 */
+}
+.toggle-peaks-inactive {
+  background-color: #d69e2e; /* bg-yellow-600 */
+  color: white;
+}
+.toggle-peaks-inactive:hover {
+  background-color: #b7791f; /* hover:bg-yellow-700 */
+}
