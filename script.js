@@ -524,61 +524,106 @@ function preprocessSource(sourceElement, targetSize) {
 
 // --- Visualization Functions ---
 /**
- * Calculates peak locations from heatmap channels and draws markers onto an image tensor.
+ * Calculates peak locations from heatmap channels and draws connecting lines and markers onto an image tensor.
+ * This function performs all operations on the GPU to avoid CPU-GPU data transfer bottlenecks.
+ * It first draws the lines connecting the 4 peaks, then draws sprite markers on top of the peaks.
  *
  * @param {tf.Tensor} imageTensor - The base image tensor (Int32, Shape: [H, W, 3]) to draw on.
  * @param {tf.Tensor} heatmapChannelsReshaped - Heatmap prediction tensor reshaped (Float32, Shape: [H*W, 4]).
  * @param {tf.Tensor} peakMarkerColor - Color tensor for the markers (Int32, Shape: [1, 3]).
+ * @param {tf.Tensor} lineColor - Color tensor for the lines (Int32, Shape: [1, 3]).
  * @param {number} predHeight - The height of the prediction tensor.
  * @param {number} predWidth - The width of the prediction tensor.
- * @returns {tf.Tensor} A new tensor with peak markers drawn, same shape and type as imageTensor.
- *                     Remember to dispose the input imageTensor if it's no longer needed after calling this.
+ * @returns {tf.Tensor} A new tensor with overlays drawn, same shape and type as imageTensor.
  */
-function applyPeakMarkers(
+function applyOverlays(
   imageTensor,
   heatmapChannelsReshaped,
   peakMarkerColor,
+  lineColor,
   predHeight,
   predWidth
 ) {
   return tf.tidy(() => {
-    // Tidy up intermediate tensors created within this function
-    // Get heatmap peaks - Find the argmax for each channel (axis=0)
+    // 1. Find Peak Coordinates from heatmaps
     const flatIndices = heatmapChannelsReshaped.argMax(0); // Shape [4]
+    const yCoords = tf.floor(flatIndices.div(predWidth)).cast("int32");
+    const xCoords = flatIndices.mod(predWidth).cast("int32");
+    const xyCoords = tf.stack([yCoords, xCoords], 1); // Shape [4, 2], e.g., [[y1,x1], [y2,x2], ...]
 
-    // Convert flat indices to [y, x] coordinates on GPU
-    const yCoords = tf.floor(flatIndices.div(predWidth)).cast("int32"); // Shape [4]
-    const xCoords = flatIndices.mod(predWidth).cast("int32"); // Shape [4]
-    const xyCoords = tf.stack([yCoords, xCoords], 1); // Shape [4, 2] ~[[y,x],...] peaks
+    // --- 2. Draw Lines Between Peaks ---
+    // This process is wrapped in a tidy to clean up intermediate line-drawing tensors.
+    const imageWithLines = tf.tidy(() => {
+      // Use a number of interpolation points that guarantees a connected line without gaps.
+      const numLinePoints = Math.max(predWidth, predHeight) * 2;
 
-    // Define offsets for the sprite shape (5x5 hollow square)
-    // prettier-ignore
-    const spriteOffsets = tf.tensor2d(
+      // Helper function to generate coordinates for one line segment using linear interpolation.
+      const generateLine = (p1, p2) => tf.tidy(() => {
+        const t = tf.linspace(0, 1, numLinePoints).expandDims(1);
+        // p1 and p2 have shape [1, 2]. Linspace broadcasting computes all points.
+        // The formula is p(t) = p1 + t * (p2 - p1)
+        return p1.add(t.mul(p2.sub(p1))).round().cast('int32');
+      });
+
+      // Get start/end points for the 4 lines from the main xyCoords tensor
+      const p0 = xyCoords.slice([0, 0], [1, 2]);
+      const p1 = xyCoords.slice([1, 0], [1, 2]);
+      const p2 = xyCoords.slice([2, 0], [1, 2]);
+      const p3 = xyCoords.slice([3, 0], [1, 2]);
+
+      // Generate all line coordinates and concatenate them
+      const allLineCoords = tf.concat([
+        generateLine(p0, p1),
+        generateLine(p1, p2),
+        generateLine(p2, p3),
+        generateLine(p3, p0), // Connect back to start to close the shape
+      ]);
+
+      // Since tf.unique is not available on WebGPU we skip. All coords including duplicates are used.
+      // The performance impact is negligible compared to avoiding CPU/GPU transfer.
+
+      // Clip coordinates to ensure they are within the image bounds
+      const yClamped = allLineCoords.slice([0, 0], [-1, 1]).clipByValue(0, predHeight - 1);
+      const xClamped = allLineCoords.slice([0, 1], [-1, 1]).clipByValue(0, predWidth - 1);
+      const clippedCoords = tf.concat([yClamped, xClamped], 1);
+
+      // Create the color update tensor by tiling the line color for each point
+      const numPoints = clippedCoords.shape[0];
+      const lineUpdates = tf.tile(lineColor, [numPoints, 1]);
+
+      // Draw the lines on the input tensor and return the result
+      return tf.tensorScatterUpdate(imageTensor, clippedCoords, lineUpdates);
+    });
+
+    // --- 3. Draw Peak Markers on Top of the Image with Lines ---
+    const imageWithOverlays = tf.tidy(() => {
+      // Define offsets for the sprite shape (5x5 hollow square)
+      // prettier-ignore
+      const spriteOffsets = tf.tensor2d(
         [[-2, -2],[-2, -1],[-2, 0],[-2, 1],[-2, 2],[-1, -2],[-1, 2],[0, -2],
          [0, 2],[1, -2],[1, 2],[2, -2],[2, -1],[2, 0],[2, 1],[2, 2]], [16, 2], "int32");
 
-    // Calculate all coordinates for the sprites using broadcasting
-    // xyCoords [4, 1, 2] + spriteOffsets [1, 16, 2] -> allCoords [4, 16, 2]
-    const allCoords = xyCoords.expandDims(1).add(spriteOffsets.expandDims(0));
-    const allCoordsFlat = allCoords.reshape([-1, 2]); // Shape [4 * 16, 2] = [64, 2]
+      // Calculate all coordinates for the sprites using broadcasting
+      const allSpriteCoords = xyCoords.expandDims(1).add(spriteOffsets.expandDims(0));
+      let spriteCoordsFlat = allSpriteCoords.reshape([-1, 2]); // Shape [4 * 16, 2]
 
-    // Clip coordinates to stay within bounds [0, H-1] and [0, W-1]
-    const clippedCoords = tf.tidy(() => {
-      const yClamped = allCoordsFlat
-        .slice([0, 0], [-1, 1])
-        .clipByValue(0, predHeight - 1);
-      const xClamped = allCoordsFlat
-        .slice([0, 1], [-1, 1])
-        .clipByValue(0, predWidth - 1);
-      return tf.concat([yClamped, xClamped], 1); // Shape [64, 2]
+      // Clip marker coordinates to stay within bounds
+      const yClamped = spriteCoordsFlat.slice([0, 0], [-1, 1]).clipByValue(0, predHeight - 1);
+      const xClamped = spriteCoordsFlat.slice([0, 1], [-1, 1]).clipByValue(0, predWidth - 1);
+      spriteCoordsFlat = tf.concat([yClamped, xClamped], 1);
+
+      // Create the color update tensor for the markers
+      const numMarkerPoints = spriteCoordsFlat.shape[0];
+      const markerUpdates = tf.tile(peakMarkerColor, [numMarkerPoints, 1]);
+
+      // Draw markers on the image that already has lines
+      return tf.tensorScatterUpdate(imageWithLines, spriteCoordsFlat, markerUpdates);
     });
 
-    // Tile the color for each point in the sprites
-    const numPoints = allCoordsFlat.shape[0]; // 64 points total (4 peaks * 16 points/sprite)
-    const peakUpdates = tf.tile(peakMarkerColor, [numPoints, 1]); // Shape [64, 3]
-
-    // Splat markers onto the image tensor and keep the result
-    return tf.tensorScatterUpdate(imageTensor, clippedCoords, peakUpdates);
+    // Keep the final result and allow the intermediate `imageWithLines` to be disposed.
+    tf.keep(imageWithOverlays);
+    imageWithLines.dispose();
+    return imageWithOverlays;
   });
 }
 
@@ -621,6 +666,7 @@ async function drawCombined(
       "float32"
     );
     const peakMarkerColor = tf.tensor2d([[255, 0, 255]], [1, 3], "int32"); // Magenta
+    const lineColor = tf.tensor2d([[255, 255, 0]], [1, 3], "int32"); // Yellow for lines
 
     // Calculate desired display alphas
     const segDisplayAlpha = Math.min(1.0, alpha + 0.2);
@@ -653,15 +699,16 @@ async function drawCombined(
     let finalInt = blendedRgb.clipByValue(0, 255).toInt();
 
     if (drawPeakOutlines) {
-      const finalIntWithPeaks = applyPeakMarkers(
+      const finalIntWithOverlays = applyOverlays(
         finalInt,
         heatmapChannelsReshaped,
         peakMarkerColor,
+        lineColor, // Pass the new line color
         predHeight,
         predWidth
       );
       finalInt.dispose(); // Dispose the tensor without peaks
-      finalInt = finalIntWithPeaks; // Assign the new tensor with peaks
+      finalInt = finalIntWithOverlays; // Assign the new tensor with peaks
     }
 
     return finalInt; // Shape finalInt = [H, W, 3]
