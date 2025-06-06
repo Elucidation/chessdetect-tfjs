@@ -52,6 +52,11 @@
             </div>
         </div>
 
+        <div class="canvas-container">
+            <canvas id="outputCombined" width="512" height="512"></canvas>
+            <label for="outputCombined">Combined Overlay</label>
+        </div>
+
         <div id="cameraInputSection" class="hidden mb-6 flex flex-col items-center px-4">
             <label class="block text-xs font-medium text-gray-600 mb-2 uppercase tracking-wider">Camera Controls</label>
             <div class="flex flex-wrap justify-center gap-4">
@@ -67,11 +72,6 @@
             </div>
             <video id="videoFeed" width="512" height="512" playsinline muted class="mt-4 hidden"></video>
             <p id="camErrorMsg" class="text-red-600 text-xs mt-2"></p>
-        </div>
-
-        <div class="canvas-container">
-            <canvas id="outputCombined" width="512" height="512"></canvas>
-            <label for="outputCombined">Combined Overlay</label>
         </div>
 
         <div class="mb-4 flex flex-col items-center border-t border-b border-indigo-200 py-3">
