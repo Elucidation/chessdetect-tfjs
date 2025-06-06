@@ -26,9 +26,10 @@ const outCombCtx = outputCombinedCanvas.getContext("2d"); // Still needed for dr
 // --- Config ---
 // v1.11 Best, Unet++ with Attention Gates, 128x128 size, ~8.6 MB
 const MODEL_URL = "./m128_att_v3_q8/model.json";
-const TARGET_IMG_SIZE = 128; // Model's expected input size
 
-const TARGET_FPS = 45; // Predict FPS, not draw FPS
+
+const TARGET_IMG_SIZE = 128; // Model's expected input size
+const TARGET_FPS = 100; // Max FPS, but really camera FPS constrains to 30 most of the time.
 const MS_PER_FRAME = 1000 / TARGET_FPS;
 
 // --- State ---
@@ -42,14 +43,16 @@ let drawPeakOutlines = true;
 let videoStream = null;
 let animationFrameId = null;
 let lastPredictTime = 0;
-let lastPredictOnlyTime = 0; // Only time for last predict
+let lastPredictOnlyTime = 0; // Only time for last predict (Doesn't handle async accurately)
+let currentVideoTime = 0;
+let lastProcessedVideoTime = -1;
 let predictFrameCount = 0; // Track Predict update count for predict FPS
 let lastFpsUpdate = 0;
 let videoDevices = [];
 let currentDeviceId = null;
 let devicesEnumerated = false;
 
-// --- Temporary Canvases (Still needed as targets for tf.browser.toPixels) ---
+// --- Temporary Canvas for model output  ---
 let tempCombinedCanvas = null;
 
 // --- Status Update Function ---
@@ -254,14 +257,24 @@ async function loadAppModel() {
   switchCameraButton.disabled = true;
   try {
     await tf.setBackend("webgpu");
+    tf.enableProdMode(); // Likely doesn't affect anything, but just in case.
     model = await tf.loadGraphModel(MODEL_URL);
     setStatus("Warming up...", true);
     // Warmup with the correct input size
     const warmupTensor = tf.zeros([1, TARGET_IMG_SIZE, TARGET_IMG_SIZE, 3]);
     const warmupResult = model.predict(warmupTensor);
-    // Dispose warmup results (handle potential array output)
-    if (Array.isArray(warmupResult)) warmupResult.forEach((t) => t.dispose());
-    else warmupResult.dispose();
+    // Create output canvas and size to model output
+    tempCombinedCanvas = document.createElement("canvas");
+    tempCombinedCanvas.width = TARGET_IMG_SIZE;
+    tempCombinedCanvas.height = TARGET_IMG_SIZE;
+    // Dispose warmup results
+    if (Array.isArray(warmupResult)) {
+        warmupResult.forEach(t => t.dispose());
+    } else {
+        // This case should ideally not happen if the model output is consistent
+        console.warn("Warmup result was not an array as expected.");
+        if (warmupResult) warmupResult.dispose();
+    }
     warmupTensor.dispose();
     setStatus(`Ready ${MODEL_URL.split('/')[1]}`);
     console.log(`Graph Model ${MODEL_URL} loaded.`);
@@ -288,13 +301,26 @@ imageInput.addEventListener("change", async (event) => {
         loadedImage = img;
         clearOutputCanvases(); // Clear previous predictions
         if (lastPredictionTensor) {
-          // Dispose old tensor if a new image is loaded
-          tf.dispose(lastPredictionTensor);
+          lastPredictionTensor.forEach(t => tf.dispose(t));
           lastPredictionTensor = null;
         }
         if (model && !isPredicting) {
           setMessage("Image loaded. Auto-predicting...");
-          await runPrediction(); // Automatically predict on new image load
+
+          // Update UI for file mode prediction start
+          setStatus("Processing...", true);
+          predictButton.disabled = true;
+          imageInput.disabled = true; // Disable while predicting
+          setMessage("Preprocessing & Predicting...");
+
+          // await runPrediction(); // Automatically predict on new image load
+          const tm = await tf.time(() => runPrediction());
+          setMessage(`Prediction took ${tm.wallMs.toFixed(0)}ms (${tm.kernelMs.toFixed(0)}ms in kernel)`);
+          // Update UI for file mode prediction end
+          setStatus("Model Ready");
+          // Re-enable controls only if model and image are loaded
+          predictButton.disabled = !model || !loadedImage;
+          imageInput.disabled = !model;
         } else if (model) {
           // Enable predict button only if model loaded but not auto-predicting (shouldn't happen often)
           predictButton.disabled = false;
@@ -325,7 +351,13 @@ predictButton.addEventListener("click", async () => {
     return;
   }
   if (isPredicting) return; // Don't predict if already predicting
-  await runPrediction();
+
+  predictButton.disabled = true;
+  setStatus("Processing...", true);
+  const tm = await tf.time(() => runPrediction());
+  setMessage(`Prediction took ${tm.wallMs.toFixed(0)}ms (${tm.kernelMs.toFixed(0)}ms in kernel)`);
+  predictButton.disabled = false;
+  setStatus("Model Ready");
 });
 
 // --- Core Prediction Logic ---
@@ -335,91 +367,51 @@ async function runPrediction(sourceElement = null) {
     return; // Exit if no source, model, or already predicting
   }
   isPredicting = true; // Set prediction flag
-
-  // Update UI for file mode prediction start
-  if (!isCameraMode) {
-    setStatus("Processing...", true);
-    predictButton.disabled = true;
-    imageInput.disabled = true; // Disable while predicting
-    setMessage("Preprocessing & Predicting...");
-    await new Promise((resolve) => setTimeout(resolve, 10)); // Allow UI to update
-  }
-
-  let inputTensor = null;
-  let outputTensor = null; // Keep the raw tensor output from the model
+  let prediction_tensors = null; // This will hold the "kept" result from tf.tidy: [segTensor, heatTensor]
 
   try {
-    // Preprocess the source image/video frame into a tensor
-    inputTensor = preprocessSource(currentSource, TARGET_IMG_SIZE);
+    // Preprocess the source. preprocessSource uses its own tf.tidy,
+    // so inputTensorForPrediction is "kept" from that tidy.
+    const inputTensorForPrediction = preprocessSource(currentSource, TARGET_IMG_SIZE);
+    // Run model prediction. Expecting an array: [segTensorWithBatch, heatTensorWithBatch]
+    let [segTensor, heatTensor] = model.predict(inputTensorForPrediction);
+    inputTensorForPrediction.dispose();
 
-    const tStart = performance.now();
+    // Squeeze batch dimension if present for each tensor
+    segTensor = segTensor.squeeze([0]); // [H, W, 1]
+    heatTensor = heatTensor.squeeze([0]); // [H, W, 4]
 
-    // Run model prediction
-    const predictionResult = tf.tidy(() => model.predict(inputTensor));
+    // These two tensors will be "kept" and returned from tf.tidy as an array
+    prediction_tensors = [segTensor, heatTensor];
 
-    // Get output tensor or make it if in pieces
-    // predictionResult expected to be either = [HxWx5] or [HxWx1, HxWx4] for segmentation/corners
-    if (!Array.isArray(predictionResult)) {
-      outputTensor = predictionResult;
-    }
-    else if (predictionResult.length == 1) {
-      outputTensor = predictionResult[0];
-    }
-    else {
-      outputTensor = tf.concat([predictionResult[0], predictionResult[1]], axis=3);
-    }
-
-    // Squeeze the batch dimension if present (e.g., shape [1, H, W, C] -> [H, W, C])
-    if (outputTensor.shape.length === 4 && outputTensor.shape[0] === 1) {
-      const squeezedTensor = outputTensor.squeeze([0]);
-      outputTensor.dispose(); // Dispose the original tensor with batch dim
-      outputTensor = squeezedTensor; // Use the squeezed tensor
-    }
-    // outputTensor should now have shape [H, W, C] (e.g., [128, 128, 5])
-
-    const predictTime = performance.now() - tStart;
-    lastPredictOnlyTime = predictTime;
-
-    // Dispose the previously stored tensor before keeping the new one
     if (lastPredictionTensor) {
-      tf.dispose(lastPredictionTensor);
+      lastPredictionTensor.forEach(t => tf.dispose(t)); // Dispose elements of the array
       lastPredictionTensor = null;
     }
-    // Keep a cloned tensor so it's not disposed by tf.tidy to be used by alpha slider
-    lastPredictionTensor = tf.keep(outputTensor.clone());
+    // Clone the "kept" tensors from tidy for later use
+    lastPredictionTensor = [
+        tf.keep(prediction_tensors[0].clone()),
+        tf.keep(prediction_tensors[1].clone())
+    ];
 
-    // Draw the combined output using the tensor
     await drawCombined(
       currentSource,
-      outputTensor,
+      prediction_tensors, // Pass the array of tensors [segTensor, heatTensor]
       parseFloat(alphaSlider.value),
       outputCombinedCanvas
     );
-
-    if (!isCameraMode) {
-      setMessage(`Prediction took ${predictTime.toFixed(0)}ms`);
-    }
   } catch (error) {
     console.error("Prediction Error:", error);
     if (!isCameraMode) displayError(`Processing error: ${error.message}`);
-    // Ensure tensor is disposed on error
     if (lastPredictionTensor) {
-      tf.dispose(lastPredictionTensor);
+      lastPredictionTensor.forEach(t => tf.dispose(t));
       lastPredictionTensor = null;
     }
+    if (prediction_tensors && Array.isArray(prediction_tensors)) prediction_tensors.forEach(t => tf.dispose(t));
+
   } finally {
     isPredicting = false; // Clear prediction flag
-    // Update UI for file mode prediction end
-    if (!isCameraMode) {
-      setStatus("Model Ready");
-      // Re-enable controls only if model and image are loaded
-      predictButton.disabled = !model || !loadedImage;
-      imageInput.disabled = !model;
-    }
-    // Dispose tensors used specifically in this run (input and the local outputTensor ref)
-    // lastPredictionTensor is intentionally kept
-    if (inputTensor) inputTensor.dispose();
-    if (outputTensor) outputTensor.dispose();
+    if (prediction_tensors && Array.isArray(prediction_tensors)) prediction_tensors.forEach(t => tf.dispose(t));
   }
 }
 
@@ -435,27 +427,34 @@ async function predictLoop() {
   const now = performance.now();
   const elapsed = now - lastPredictTime;
 
-  // Update FPS counter approx every second
-  if (now - lastFpsUpdate > 1000) {
-    const timeTakenMs = now - lastFpsUpdate; // Time in ms.
-    const perStepAvgMs = timeTakenMs / predictFrameCount;
-    const fps = predictFrameCount / (timeTakenMs / 1000);
-    // fpsDisplay.textContent = `${fps.toFixed(1)} | ${perStepAvgMs.toFixed(1)}ms/step | ${lastPredictOnlyTime.toFixed(1)}ms/predict`;
-    fpsDisplay.textContent = fps.toFixed(1);
-    predictFrameCount = 0;
-    lastFpsUpdate = now;
-  }
-
   // Throttle predictions based on TARGET_FPS
   if (elapsed > MS_PER_FRAME && !isPredicting) {
-    predictFrameCount++;
-    lastPredictTime = now; // Update time *before* prediction starts
-    // Ensure video frame is ready before trying to predict
-    if (videoElement.readyState >= videoElement.HAVE_CURRENT_DATA) {
+    const currentVideoTime = videoElement.currentTime;
+    // Only process if a new video frame is available
+    if ((videoElement.readyState >= videoElement.HAVE_CURRENT_DATA) && 
+        (currentVideoTime > lastProcessedVideoTime)) {
+      predictFrameCount++;
+      lastPredictTime = now; // Update time *before* prediction starts
+      lastProcessedVideoTime = currentVideoTime; // Update last video frame time
       setMessage(" "); // Clear previous messages in camera mode
       await runPrediction(videoElement); // Run prediction on the current video frame
     }
   }
+
+  // Update FPS counter approx every second
+  if (now - lastFpsUpdate > 1000) {
+    const timeTakenMs = now - lastFpsUpdate; // Time in ms.
+    const perStepAvgMs = timeTakenMs / predictFrameCount;
+    const fps = 1000 * predictFrameCount / timeTakenMs;
+
+    const camera_framerate = videoElement.srcObject.getVideoTracks()[0].getSettings().frameRate;
+    fpsDisplay.textContent = `${fps.toFixed(1)} / ${camera_framerate} | ${perStepAvgMs.toFixed(1)}ms/step | ${predictFrameCount} steps`;
+    // fpsDisplay.textContent = tMsg;
+    // fpsDisplay.textContent = fps.toFixed(1);
+    predictFrameCount = 0;
+    lastFpsUpdate = now;
+  }
+  
 
   // Request the next frame
   animationFrameId = requestAnimationFrame(predictLoop);
@@ -463,7 +462,6 @@ async function predictLoop() {
 
 // --- Preprocessing ---
 function preprocessSource(sourceElement, targetSize) {
-  return tf.tidy(() => {
     const srcWidth = sourceElement.videoWidth || sourceElement.width;
     const srcHeight = sourceElement.videoHeight || sourceElement.height;
 
@@ -505,7 +503,7 @@ function preprocessSource(sourceElement, targetSize) {
       tensor.expandDims(0), // Add batch dim: [1, H, W, C]
       cropBox, // Boxes normalized coordinates
       [0], // Box indices (only one box)
-      [targetSize, targetSize] // Target output size [height, width]
+      [targetSize, targetSize], // Target output size [height, width]
     ); // Output shape: [1, targetSize, targetSize, 3]
 
     // Normalize to 0-1 range
@@ -517,7 +515,6 @@ function preprocessSource(sourceElement, targetSize) {
     // Return the preprocessed tensor (still has batch dimension)
     // Shape: [1, targetSize, targetSize, 3]
     return normalized;
-  });
 }
 
 // --- Visualization Functions ---
@@ -582,32 +579,28 @@ function applyPeakMarkers(
 
 async function drawCombined(
   baseSourceElement,
-  predictionTensor,
+  predictionTensors, // Now an array [segTensor, heatTensor]
   alpha,
   targetCanvas
 ) {
-  if (!baseSourceElement || !predictionTensor) return;
+  if (!baseSourceElement || !predictionTensors || !Array.isArray(predictionTensors) || predictionTensors.length !== 2) {
+    console.warn("drawCombined: Invalid inputs", baseSourceElement, predictionTensors);
+    return;
+  }
+
+  const [segTensor, heatTensor] = predictionTensors; // Destructure
+  if (!segTensor || !heatTensor) {
+    console.warn("drawCombined: One or both tensors in predictionTensors are undefined.");
+    return;
+  }
 
   const targetCtx = targetCanvas.getContext("2d");
   const targetWidth = targetCanvas.width;
   const targetHeight = targetCanvas.height;
 
-  const [predHeight, predWidth, channels] = predictionTensor.shape;
-  if (channels !== 5) {
-    console.error(`Prediction tensor has ${channels} channels, expected 5.`);
-    return;
-  }
-
-  // --- Use only ONE temporary canvas ---
-  if (
-    !tempCombinedCanvas ||
-    tempCombinedCanvas.width !== predWidth ||
-    tempCombinedCanvas.height !== predHeight
-  ) {
-    tempCombinedCanvas = document.createElement("canvas");
-    tempCombinedCanvas.width = predWidth;
-    tempCombinedCanvas.height = predHeight;
-  }
+  // const [predHeight, predWidth] = segTensor.shape.slice(0, 2); // e.g. [128, 128], assuming H,W match
+  const predWidth = TARGET_IMG_SIZE;
+  const predHeight = TARGET_IMG_SIZE;
 
   const heatmapColorsTensor = tf.tensor2d(
     [
@@ -623,33 +616,20 @@ async function drawCombined(
 
   // --- Generate Combined Visualization Tensor ---
   // NOTE : Most of this is running on GPU via webgpu, avoid gpu<-> data transfer where possible.
-  // This is the difference between 0.2ms and 20-30ms frame updates/
   const finalDrawTensor = tf.tidy(() => {
     // Calculate desired display alphas
     const segDisplayAlpha = Math.min(1.0, alpha + 0.2);
 
-    // --- Segmentation Mask (Channel 0) ---
-    const segChannel = tf.slice(
-      predictionTensor,
-      [0, 0, 0],
-      [predHeight, predWidth, 1]
-    );
-    const segChannelScaled = segChannel.mul(175); // Segmentation as not fully white gray
+    // --- Segmentation Mask ---
+    const segChannelScaled = segTensor.mul(175); // Segmentation as not fully white gray
     const segRgb = tf.concat(
       [segChannelScaled, segChannelScaled, segChannelScaled],
       2
     ); // Shape [H, W, 3]
 
-    // --- Heatmap (Channels 1-4) ---
-    const heatmapChannels = tf.slice(
-      predictionTensor,
-      [0, 0, 1],
-      [predHeight, predWidth, 4]
-    ); // Shape: [H, W, 4]
-    const heatmapChannelsReshaped = heatmapChannels.reshape([
-      predHeight * predWidth,
-      4,
-    ]); // Shape: [H*W, 4]
+    // --- Heatmap ---
+    const heatmapChannelsReshaped = heatTensor.reshape([predHeight * predWidth, 4]); // Shape: [H*W, 4]
+
     const heatmapCombined = tf.matMul(
       heatmapChannelsReshaped,
       heatmapColorsTensor
@@ -662,8 +642,6 @@ async function drawCombined(
     const heatWeighted = heatmapRgb.mul(alpha);
 
     // Add them together (simple additive blending)
-    // NOTE: This is different from overlay compositing!
-    // Adjust blending logic here if needed (e.g., screen, multiply)
     const blendedRgb = segWeighted.add(heatWeighted);
 
     // Clip blended values and convert to Int32 for drawing or further modification
@@ -685,17 +663,15 @@ async function drawCombined(
   });
 
   // NOTE: Key webgpu optimization, tf.browser.draw avoids gpu->cpu->gpu data transfer for drawing
-  // const a = performance.now();
   const results = await tf.browser.draw(finalDrawTensor, tempCombinedCanvas);
-  // console.info(`Took ${(performance.now() - a).toFixed(2)} ms to await draw`);
 
   // --- Dispose intermediate tensors ---
-  finalDrawTensor.dispose();
+  // finalDrawTensor.dispose();
   heatmapColorsTensor.dispose();
   peakMarkerColor.dispose();
 
   // --- Draw Base Image ---
-  targetCtx.clearRect(0, 0, targetWidth, targetHeight);
+  // targetCtx.clearRect(0, 0, targetWidth, targetHeight); // Will be overwriting anyway
   targetCtx.imageSmoothingEnabled = true;
   const baseWidth = baseSourceElement.videoWidth || baseSourceElement.width;
   const baseHeight = baseSourceElement.videoHeight || baseSourceElement.height;
@@ -714,6 +690,7 @@ async function drawCombined(
   }
   const offsetX = (baseWidth - cropWidth) / 2;
   const offsetY = (baseHeight - cropHeight) / 2;
+  
   targetCtx.drawImage(
     baseSourceElement,
     offsetX,
@@ -813,7 +790,7 @@ function resetUI() {
 
   // Dispose the stored prediction tensor if it exists
   if (lastPredictionTensor) {
-    tf.dispose(lastPredictionTensor);
+    lastPredictionTensor.forEach(t => tf.dispose(t));
     lastPredictionTensor = null;
   }
 
@@ -846,7 +823,7 @@ function displayError(message) {
   loadedImage = null;
   // Dispose the stored prediction tensor on error
   if (lastPredictionTensor) {
-    tf.dispose(lastPredictionTensor);
+    lastPredictionTensor.forEach(t => tf.dispose(t));
     lastPredictionTensor = null;
   }
   console.error(message);
