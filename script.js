@@ -25,7 +25,10 @@ const outCombCtx = outputCombinedCanvas.getContext("2d"); // Still needed for dr
 
 // --- Config ---
 // v1.11 Best, Unet++ with Attention Gates, 128x128 size, ~8.6 MB
-const MODEL_URL = "./m128_att_v3_q8/model.json";
+// const MODEL_URL = "./m128_att_v3_q8/model.json";
+
+// Tiny UNet Model, quantized uint8, ~645 KB
+const MODEL_URL = "./4_unet_q8/model.json";
 
 
 const TARGET_IMG_SIZE = 128; // Model's expected input size
