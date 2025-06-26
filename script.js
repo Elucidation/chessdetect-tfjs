@@ -294,7 +294,7 @@ async function loadAppModel() {
         if (warmupResult) warmupResult.dispose();
     }
     warmupTensor.dispose();
-    setStatus(`Ready ${MODEL_URL.split('/')[1]}`);
+    setStatus(`Ready ${MODEL_URL.split('/').slice(-2)[0]}`);
     console.log(`Graph Model ${MODEL_URL} loaded.`);
     // Enable controls now that model is ready
     imageInput.disabled = false;
