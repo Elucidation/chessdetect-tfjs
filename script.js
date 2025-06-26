@@ -24,8 +24,16 @@ const fpsDisplay = document.getElementById("fpsDisplay");
 const outCombCtx = outputCombinedCanvas.getContext("2d"); // Still needed for drawing base image & overlays
 
 // --- Config ---
-// Tiny UNet Model, SeparableConv2D quantized uint8, ~534 KB
-const MODEL_URL = "./4_unet_q8/model.json";
+const AVAILABLE_MODELS = [
+  {
+    name: "UNet",
+    url: "./4_unet_q8/model.json",
+  },
+  {
+    name: "U-Net++",
+    url: "./models/5_unetpp_q8/model.json",
+  }
+];
 
 
 const TARGET_IMG_SIZE = 128; // Model's expected input size
@@ -37,6 +45,7 @@ const TARGET_FPS = 300;
 const MS_PER_FRAME = 1000 / TARGET_FPS;
 
 // --- State ---
+let MODEL_URL = AVAILABLE_MODELS[1].url; // Unet++ as default
 let loadedImage = null;
 let model = null;
 let lastPredictionTensor = null; // Store the last tensor for alpha adjustments
