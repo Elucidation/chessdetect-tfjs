@@ -1,6 +1,6 @@
 ## U-Net++ Chessboard Segmentation and 4 Corners Web Predictor
 
-This is an HTML/JavaScript web application that runs a pre-trained U-Net++ segmentation/heatmap model directly in the browser using TensorFlow.js. [I discuss building the dataset/design/training in this video](https://youtu.be/BVt12vzp_iM?si=3JjjzhIVVlbYAuia). The model runs locally on device, no server is used.
+This is an HTML/JavaScript web application that runs a pre-trained U-Net++ segmentation/heatmap model directly in the browser using TensorFlow.js. [I discuss building the dataset/design/training in this video](https://youtu.be/nTezvh2lFtw?si=uk8yKnZlK6U1nMPX). The model runs locally on device, no server is used.
 
 ![latest_224_model_heatmaps_result](https://github.com/user-attachments/assets/1a0deba5-a425-4eed-b715-cd5904497096)
 
